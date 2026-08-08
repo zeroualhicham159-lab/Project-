@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL · PROJECT CONTROL — Telekommunikations-Projektsteuerung</title>
+<!--
+  Library loading strategy:
+  Every external library is loaded with a primary CDN (cdnjs) and, if that request
+  fails (network error, blocked domain, wrong/unavailable version, ad-blocker, etc.),
+  automatic fallbacks are attempted in sequence (jsDelivr, then unpkg). This prevents
+  a single failed CDN request from breaking library availability. All application code
+  that calls into these libraries additionally checks that the library actually loaded
+  before using it (see "LIBRARY GUARDS" further down), so the app degrades gracefully
+  instead of throwing an uncaught ReferenceError if every CDN attempt fails.
+-->
+<script>
+  function loadWithFallback(urls, onDone){
+    (function attempt(i){
+      if(i>=urls.length){ if(onDone) onDone(false); return; }
+      const s=document.createElement('script');
+      s.src=urls[i];
+      s.onload=function(){ if(onDone) onDone(true); };
+      s.onerror=function(){ attempt(i+1); };
+      document.head.appendChild(s);
+    })(0);
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"
+  onerror="loadWithFallback(['https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js','https://unpkg.com/chart.js@4.5.0/dist/chart.umd.min.js','https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js'])"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+  onerror="loadWithFallback(['https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js','https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'])"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+  onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+  onerror="loadWithFallback(['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'])"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"
+  onerror="loadWithFallback(['https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js'])"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0D12;
+  --bg-elev:#0F131A;
+  --panel:#141924;
+  --panel-2:#1A2130;
+  --panel-3:#1F2736;
+  --border:#232B3C;
+  --border-soft:#1B2230;
+  --text:#E9ECF3;
+  --text-dim:#9BA5B8;
+  --text-faint:#5C6579;
+  --accent:#17D9B4;
+  --accent-dim:#0F8F76;
+  --accent-2:#5B8DEF;
+  --warn:#F0A93E;
+  --crit:#EF5A6F;
+  --ok:#33D690;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:radial-gradient(1200px 800px at 90% -10%, #0F1A22 0%, transparent 60%), var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:14px;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#2A3345;border-radius:6px;}
+::-webkit-scrollbar-thumb:hover{background:#37425A;}
+a{color:inherit;text-decoration:none;}
+button{font-family:inherit;cursor:pointer;}
+.hidden{display:none !important;}
+.mono{font-family:var(--font-mono);}
+
+/* ===== Signal mark (signature element) ===== */
+.signal-mark{display:inline-flex;align-items:flex-end;gap:2.5px;height:16px;}
+.signal-mark span{display:block;width:3px;background:var(--accent);border-radius:1px;animation:sig 1.6s ease-in-out infinite;}
+.signal-mark span:nth-child(1){height:5px;animation-delay:0s;}
+.signal-mark span:nth-child(2){height:9px;animation-delay:.15s;}
+.signal-mark span:nth-child(3){height:13px;animation-delay:.3s;}
+.signal-mark span:nth-child(4){height:16px;animation-delay:.45s;}
+@keyframes sig{0%,100%{opacity:.45;transform:scaleY(.75);}50%{opacity:1;transform:scaleY(1);}}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-word{font-family:var(--font-display);font-weight:700;letter-spacing:.06em;font-size:13px;color:var(--text);}
+.brand-word b{color:var(--accent);}
+.brand-sub{font-size:10.5px;color:var(--text-faint);letter-spacing:.14em;text-transform:uppercase;margin-top:1px;}
+
+/* ===== Landing ===== */
+#landing{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;position:relative;}
+.landing-noise{position:absolute;inset:0;background-image:radial-gradient(circle at 15% 20%, rgba(23,217,180,.05), transparent 40%), radial-gradient(circle at 85% 80%, rgba(91,141,239,.06), transparent 40%);pointer-events:none;}
+.landing-inner{max-width:760px;width:100%;text-align:center;position:relative;z-index:1;}
+.landing-brand{display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:34px;}
+.landing-brand .brand-word{font-size:15px;}
+h1.landing-title{font-family:var(--font-display);font-weight:700;font-size:clamp(28px,4.4vw,44px);letter-spacing:-.01em;line-height:1.1;margin-bottom:14px;}
+.landing-title .accent{color:var(--accent);}
+.landing-subtitle{color:var(--text-dim);font-size:15.5px;max-width:560px;margin:0 auto 44px;line-height:1.6;}
+.dropzone{
+  border:1.5px dashed #2C3648;border-radius:16px;background:linear-gradient(180deg, rgba(23,217,180,.03), rgba(23,217,180,0));
+  padding:52px 32px;transition:.2s;position:relative;cursor:pointer;
+}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:linear-gradient(180deg, rgba(23,217,180,.07), rgba(23,217,180,.01));}
+.dropzone .icon-wrap{width:64px;height:64px;border-radius:16px;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 22px;color:var(--accent);}
+.dropzone h3{font-family:var(--font-display);font-size:19px;font-weight:600;margin-bottom:8px;}
+.dropzone p{color:var(--text-dim);font-size:13.5px;margin-bottom:4px;}
+.dropzone .formats{color:var(--text-faint);font-size:12px;margin-top:14px;letter-spacing:.03em;}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:13.5px;font-weight:500;transition:.15s;}
+.btn:hover{background:var(--panel-3);border-color:#37425A;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#062821;font-weight:600;}
+.btn-primary:hover{background:#22EAC4;}
+.btn-ghost{background:transparent;}
+.landing-actions{margin-top:24px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;}
+.privacy-note{margin-top:30px;display:flex;flex-direction:column;gap:4px;color:var(--text-faint);font-size:12px;}
+.privacy-note .row{display:flex;align-items:center;gap:6px;justify-content:center;}
+.landing-decor{display:flex;justify-content:center;gap:34px;margin-top:52px;opacity:.55;}
+.landing-decor .item{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-faint);font-size:10.5px;letter-spacing:.05em;}
+.landing-decor svg{color:var(--accent-2);}
+
+/* import progress */
+#importOverlay{position:fixed;inset:0;background:rgba(8,10,14,.86);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+.import-card{width:420px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:32px;text-align:center;}
+.import-card .signal-mark{justify-content:center;width:100%;margin-bottom:18px;}
+.import-step{font-family:var(--font-display);font-size:15px;font-weight:600;margin-bottom:6px;}
+.import-sub{color:var(--text-faint);font-size:12.5px;margin-bottom:20px;}
+.progress-track{height:5px;background:var(--panel-3);border-radius:4px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));width:0%;transition:width .4s ease;}
+
+/* toast */
+#toast{position:fixed;top:18px;left:50%;transform:translateX(-50%) translateY(-14px);background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--ok);padding:12px 18px;border-radius:9px;display:flex;align-items:center;gap:10px;font-size:13px;z-index:300;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 12px 30px rgba(0,0,0,.4);}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.error{border-left-color:var(--crit);}
+
+/* ===== App shell ===== */
+#app{display:none;min-height:100vh;grid-template-columns:250px 1fr;}
+#app.active{display:grid;}
+#sidebar{background:var(--bg-elev);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;height:100vh;position:sticky;top:0;overflow-y:auto;}
+.sb-brand{padding:20px 18px;border-bottom:1px solid var(--border-soft);}
+.sb-nav{padding:14px 10px;flex:1;}
+.sb-group{margin-bottom:4px;}
+.sb-group-label{font-size:10px;letter-spacing:.12em;color:var(--text-faint);text-transform:uppercase;padding:14px 12px 6px;}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:var(--text-dim);font-size:13px;font-weight:500;cursor:pointer;transition:.12s;position:relative;}
+.sb-item:hover{background:var(--panel-2);color:var(--text);}
+.sb-item.active{background:linear-gradient(90deg, rgba(23,217,180,.15), rgba(23,217,180,.02));color:var(--text);}
+.sb-item.active::before{content:'';position:absolute;left:-10px;top:8px;bottom:8px;width:3px;background:var(--accent);border-radius:2px;}
+.sb-item svg{width:16px;height:16px;flex-shrink:0;color:var(--text-faint);}
+.sb-item.active svg{color:var(--accent);}
+.sb-foot{padding:14px 18px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-faint);display:flex;justify-content:space-between;align-items:center;}
+.sb-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:5px;}
+
+#main{min-width:0;}
+#topbar{position:sticky;top:0;z-index:20;background:rgba(10,13,18,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border-soft);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.breadcrumb{font-size:12px;color:var(--text-faint);display:flex;align-items:center;gap:6px;}
+.breadcrumb b{color:var(--text);font-weight:600;}
+.topbar-actions{display:flex;align-items:center;gap:10px;}
+.file-chip{display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--border);padding:6px 12px;border-radius:20px;font-size:12px;color:var(--text-dim);}
+.file-chip svg{width:13px;height:13px;color:var(--accent);}
+
+#content{padding:24px 26px 60px;max-width:1500px;}
+.view{display:none;animation:fadein .25s ease;}
+.view.active{display:block;}
+@keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+.view-head{margin-bottom:20px;}
+.view-title{font-family:var(--font-display);font-size:21px;font-weight:700;letter-spacing:-.01em;}
+.view-desc{color:var(--text-faint);font-size:12.5px;margin-top:3px;}
+
+/* Filter bar */
+.filterbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;padding:12px 14px;background:var(--panel);border:1px solid var(--border);border-radius:10px;align-items:center;}
+.filterbar label{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;}
+.fselect{background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 9px;font-size:12.5px;min-width:130px;}
+.fselect:focus{outline:none;border-color:var(--accent-dim);}
+.fsearch{background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 11px 7px 32px;font-size:12.5px;min-width:220px;}
+.search-wrap{position:relative;}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text-faint);}
+.filter-reset{margin-left:auto;font-size:12px;color:var(--accent);}
+
+/* KPI cards */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:22px;}
+.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 17px;position:relative;overflow:hidden;}
+.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent);}
+.kpi-label{font-size:11px;color:var(--text-faint);letter-spacing:.04em;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
+.kpi-label svg{width:13px;height:13px;}
+.kpi-value{font-family:var(--font-mono);font-size:23px;font-weight:600;letter-spacing:-.01em;}
+.kpi-sub{font-size:11.5px;margin-top:6px;color:var(--text-faint);}
+.kpi-sub.up{color:var(--ok);}
+.kpi-sub.down{color:var(--crit);}
+.kpi-sub.warn{color:var(--warn);}
+
+/* panels/cards */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;}
+.panel-title{font-family:var(--font-display);font-size:14.5px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+.panel-title span.tag{font-size:10.5px;font-weight:500;color:var(--text-faint);background:var(--panel-2);padding:3px 9px;border-radius:20px;}
+.grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+@media(max-width:1100px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+.chart-wrap{position:relative;height:260px;}
+.chart-wrap.sm{height:190px;}
+
+/* status badges */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.01em;}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;}
+.badge.ok{background:rgba(51,214,144,.12);color:var(--ok);}
+.badge.ok::before{background:var(--ok);}
+.badge.warn{background:rgba(240,169,62,.12);color:var(--warn);}
+.badge.warn::before{background:var(--warn);}
+.badge.crit{background:rgba(239,90,111,.12);color:var(--crit);}
+.badge.crit::before{background:var(--crit);}
+.badge.neutral{background:rgba(155,165,184,.12);color:var(--text-dim);}
+.badge.neutral::before{background:var(--text-dim);}
+.badge.info{background:rgba(91,141,239,.12);color:var(--accent-2);}
+.badge.info::before{background:var(--accent-2);}
+
+/* table */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;}
+table{width:100%;border-collapse:collapse;font-size:12.6px;background:var(--panel);}
+thead th{text-align:left;background:var(--panel-2);color:var(--text-faint);font-weight:600;font-size:10.8px;letter-spacing:.04em;text-transform:uppercase;padding:11px 14px;white-space:nowrap;border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer;user-select:none;}
+thead th:hover{color:var(--text);}
+thead th .sort-ind{opacity:.4;margin-left:4px;font-size:9px;}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border-soft);white-space:nowrap;color:var(--text);}
+tbody tr:hover{background:var(--panel-2);}
+tbody tr:last-child td{border-bottom:none;}
+.progress-mini{width:70px;height:5px;background:var(--panel-3);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
+.progress-mini i{display:block;height:100%;background:var(--accent);}
+.table-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--panel);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:var(--text-faint);}
+.pager{display:flex;gap:4px;align-items:center;}
+.pager button{background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);width:28px;height:28px;border-radius:6px;font-size:12px;}
+.pager button:hover:not(:disabled){color:var(--text);border-color:#37425A;}
+.pager button:disabled{opacity:.35;cursor:default;}
+.pager .cur{font-family:var(--font-mono);padding:0 8px;color:var(--text);}
+.table-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap;}
+
+/* health cards */
+.health-list{display:flex;flex-direction:column;gap:10px;}
+.health-item{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel-2);border-radius:10px;border:1px solid var(--border-soft);}
+.health-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.health-name{font-weight:600;font-size:12.8px;}
+.health-reason{color:var(--text-faint);font-size:11.5px;margin-top:2px;}
+
+/* gantt */
+.gantt-wrap{overflow-x:auto;}
+.gantt-row{display:grid;grid-template-columns:220px 1fr;align-items:center;border-bottom:1px solid var(--border-soft);}
+.gantt-row:hover{background:var(--panel-2);}
+.gantt-label{padding:9px 12px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--border-soft);}
+.gantt-track{position:relative;height:34px;min-width:900px;}
+.gantt-bar{position:absolute;top:8px;height:18px;border-radius:5px;background:linear-gradient(90deg,var(--accent-dim),var(--accent));}
+.gantt-bar.late{background:linear-gradient(90deg,#8a3540,var(--crit));}
+.gantt-bar .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.22);border-radius:5px 0 0 5px;}
+.gantt-ms{position:absolute;top:4px;width:14px;height:14px;background:var(--warn);transform:translateX(-50%) rotate(45deg);border-radius:3px;}
+.gantt-header{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);}
+.gantt-months{position:relative;height:26px;min-width:900px;font-size:10.5px;color:var(--text-faint);}
+.gantt-months span{position:absolute;top:6px;border-left:1px solid var(--border-soft);padding-left:5px;}
+
+/* risk matrix */
+.matrix{display:grid;grid-template-columns:26px repeat(5,1fr);gap:4px;max-width:520px;}
+.matrix-cell{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:13px;font-weight:600;color:#fff;position:relative;cursor:default;}
+.matrix-axis{display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-faint);writing-mode:vertical-rl;text-orientation:mixed;}
+.matrix-axis-bottom{grid-column:2/7;text-align:center;font-size:10.5px;color:var(--text-faint);margin-top:6px;}
+
+/* insight list */
+.insight{display:flex;gap:12px;padding:13px 14px;border-radius:10px;background:var(--panel-2);border:1px solid var(--border-soft);margin-bottom:9px;}
+.insight svg{width:16px;height:16px;flex-shrink:0;margin-top:1px;}
+.insight.pos svg{color:var(--ok);}
+.insight.warn svg{color:var(--warn);}
+.insight.crit svg{color:var(--crit);}
+.insight p{font-size:12.8px;line-height:1.5;color:var(--text);}
+
+/* data quality */
+.dq-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+.dq-row:last-child{border-bottom:none;}
+.dq-col{color:var(--accent-2);font-weight:600;min-width:150px;}
+
+/* settings */
+.settings-row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--border-soft);}
+.settings-row:last-child{border-bottom:none;}
+.settings-row h4{font-size:13px;font-weight:600;margin-bottom:3px;}
+.settings-row p{font-size:11.5px;color:var(--text-faint);}
+.toggle{width:38px;height:22px;background:var(--panel-3);border-radius:20px;position:relative;border:1px solid var(--border);flex-shrink:0;}
+.toggle.on{background:var(--accent-dim);}
+.toggle i{position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:2px;left:2px;transition:.15s;}
+.toggle.on i{left:18px;}
+
+/* map */
+#siteMap{height:440px;border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+
+/* print */
+@media print{
+  #sidebar,#topbar,.filterbar,.no-print{display:none !important;}
+  body{background:#fff;color:#000;}
+  #app{display:block !important;}
+  #content{padding:0;max-width:none;}
+  .panel{border:1px solid #ccc;background:#fff;break-inside:avoid;}
+}
+
+.emptynote{color:var(--text-faint);font-size:12.5px;padding:26px;text-align:center;}
+.small-btn{background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:7px;font-size:12px;display:inline-flex;align-items:center;gap:6px;}
+.small-btn:hover{color:var(--text);border-color:#37425A;}
+</style>
+</head>
+<body>
+
+<!-- ===================== LANDING ===================== -->
+<div id="landing">
+  <div class="landing-noise"></div>
+  <div class="landing-inner">
+    <div class="landing-brand">
+      <div class="signal-mark"><span></span><span></span><span></span><span></span></div>
+      <div>
+        <div class="brand-word">SIGNAL <b>·</b> PROJECT CONTROL</div>
+      </div>
+    </div>
+    <h1 class="landing-title">Telekommunikations-<span class="accent">Projektsteuerung</span></h1>
+    <p class="landing-subtitle">Projektmanagement, Projektcontrolling und technische Telekommunikationsanalyse — für Rollout-, RAN- und Glasfaserprojekte.</p>
+
+    <div class="dropzone" id="dropzone">
+      <div class="icon-wrap" id="dzIcon"><span data-lucide="upload-cloud"></span></div>
+      <h3>Projektdatei importieren</h3>
+      <p>Excel- oder CSV-Datei hierher ziehen</p>
+      <p style="color:var(--text-faint);font-size:12.5px;">oder Datei auswählen</p>
+      <div class="formats">.xlsx · .xls · .csv</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;">
+    </div>
+
+    <div class="landing-actions">
+      <button class="btn btn-primary" id="loadSampleBtn"><span data-lucide="database"></span> Beispieldaten laden</button>
+      <button class="btn" id="pickFileBtn"><span data-lucide="upload"></span> Datei auswählen</button>
+    </div>
+
+    <div class="privacy-note">
+      <div class="row"><span data-lucide="shield-check" style="width:13px;height:13px;"></span> Ihre Daten werden lokal in Ihrem Browser verarbeitet.</div>
+      <div class="row"><span data-lucide="lock" style="width:13px;height:13px;"></span> Es findet keine Übertragung an einen externen Server statt.</div>
+    </div>
+
+    <div class="landing-decor">
+      <div class="item"><span data-lucide="radio-tower" style="width:20px;height:20px;"></span>Funknetz</div>
+      <div class="item"><span data-lucide="git-branch" style="width:20px;height:20px;"></span>Zeitplan</div>
+      <div class="item"><span data-lucide="euro" style="width:20px;height:20px;"></span>Budget</div>
+      <div class="item"><span data-lucide="alert-triangle" style="width:20px;height:20px;"></span>Risiken</div>
+      <div class="item"><span data-lucide="cable" style="width:20px;height:20px;"></span>Glasfaser</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== IMPORT OVERLAY ===================== -->
+<div id="importOverlay" class="hidden">
+  <div class="import-card">
+    <div class="signal-mark"><span></span><span></span><span></span><span></span></div>
+    <div class="import-step" id="importStepText">Datei wird analysiert…</div>
+    <div class="import-sub" id="importSubText">Bitte einen Moment Geduld.</div>
+    <div class="progress-track"><div class="progress-fill" id="importProgressFill"></div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <aside id="sidebar">
+    <div class="sb-brand">
+      <div class="brand"><div class="signal-mark"><span></span><span></span><span></span><span></span></div>
+        <div><div class="brand-word">SIGNAL <b>·</b> CONTROL</div><div class="brand-sub">Projektsteuerung</div></div>
+      </div>
+    </div>
+    <nav class="sb-nav" id="sbNav"></nav>
+    <div class="sb-foot"><span><span class="sb-dot"></span>Lokale Sitzung</span><span id="sbRecordCount">0 Datensätze</span></div>
+  </aside>
+
+  <div id="main">
+    <div id="topbar">
+      <div class="breadcrumb">SIGNAL · PROJECT CONTROL <span data-lucide="chevron-right" style="width:12px;height:12px;"></span> <b id="crumbTitle">Projektübersicht</b></div>
+      <div class="topbar-actions">
+        <div class="file-chip"><span data-lucide="file-check-2"></span><span id="fileChipText">Beispieldaten</span></div>
+        <button class="btn small-btn" id="newImportBtn"><span data-lucide="refresh-cw" style="width:13px;height:13px;"></span>Neuer Import</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   SIGNAL · PROJECT CONTROL — Telekommunikations-Projektsteuerung
+   Single-file enterprise application (Vanilla JS)
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------
+   1. ICON SET (lucide names used across nav / KPIs)
+--------------------------------------------------------------------- */
+function icon(name, cls){ return `<span data-lucide="${name}" class="${cls||''}"></span>`; }
+
+/* ---------------------------------------------------------------------
+   2. STATE
+--------------------------------------------------------------------- */
+const STATE = {
+  fileName: null,
+  fileSize: null,
+  view: 'overview',
+  data: { projects:[], tasks:[], milestones:[], risks:[], resources:[], sites:[], fiber:[] },
+  filters: { project:'', type:'', company:'', state:'', region:'', city:'', manager:'', status:'', priority:'', tech:'', risk:'' },
+  charts: {},
+  tablePages: {},
+  tableSort: {},
+  searchTerms: {},
+  quality: null,
+  map: null
+};
+const fmtEUR = n => (n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0});
+const fmtNum = n => (n||0).toLocaleString('de-DE');
+const fmtPct = n => (n||0).toLocaleString('de-DE',{maximumFractionDigits:1})+' %';
+const fmtDate = d => d ? new Date(d).toLocaleDateString('de-DE') : '–';
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
+function rnd(min,max){ return Math.random()*(max-min)+min; }
+function rndInt(min,max){ return Math.floor(rnd(min,max+1)); }
+function pick(arr){ return arr[rndInt(0,arr.length-1)]; }
+function uid(prefix,i){ return prefix+'-'+String(i).padStart(4,'0'); }
+
+/* ---------------------------------------------------------------------
+   3. SYNTHETIC DATA GENERATOR — "Realistische synthetische Testdaten"
+--------------------------------------------------------------------- */
+const COMPANIES = ['NetConnect Deutschland GmbH','SignalWerk AG','Fiberlink Deutschland GmbH','TeleBau Infrastruktur GmbH','GigaNetz AG','Funkwerk Süd GmbH'];
+const CITIES = [
+  {city:'München',state:'Bayern',region:'Süd',lat:48.1351,lng:11.5820},
+  {city:'Berlin',state:'Berlin',region:'Ost',lat:52.5200,lng:13.4050},
+  {city:'Hamburg',state:'Hamburg',region:'Nord',lat:53.5511,lng:9.9937},
+  {city:'Köln',state:'Nordrhein-Westfalen',region:'West',lat:50.9375,lng:6.9603},
+  {city:'Frankfurt am Main',state:'Hessen',region:'Mitte',lat:50.1109,lng:8.6821},
+  {city:'Stuttgart',state:'Baden-Württemberg',region:'Süd',lat:48.7758,lng:9.1829},
+  {city:'Düsseldorf',state:'Nordrhein-Westfalen',region:'West',lat:51.2277,lng:6.7735},
+  {city:'Leipzig',state:'Sachsen',region:'Ost',lat:51.3397,lng:12.3731},
+  {city:'Dresden',state:'Sachsen',region:'Ost',lat:51.0504,lng:13.7373},
+  {city:'Hannover',state:'Niedersachsen',region:'Nord',lat:52.3759,lng:9.7320},
+  {city:'Nürnberg',state:'Bayern',region:'Süd',lat:49.4521,lng:11.0767},
+  {city:'Bremen',state:'Bremen',region:'Nord',lat:53.0793,lng:8.8017},
+  {city:'Essen',state:'Nordrhein-Westfalen',region:'West',lat:51.4556,lng:7.0116},
+  {city:'Mainz',state:'Rheinland-Pfalz',region:'Mitte',lat:49.9929,lng:8.2473}
+];
+const PROJECT_TYPES = ['5G-Rollout','LTE-Modernisierung','RAN-Modernisierung','5G-Kapazitätserweiterung','FTTH-Ausbau','Glasfaserausbau','Standortausbau','Netzwerkmodernisierung','Indoor-Versorgung','Backbone-Ausbau','Transportnetz','Netzoptimierung'];
+const STATUSES = ['Geplant','In Umsetzung','Abgeschlossen','Pausiert','Verzögert'];
+const PRIORITIES = ['Niedrig','Mittel','Hoch','Kritisch'];
+const MANAGERS = ['J. Hoffmann','S. Bauer','M. Vogel','L. Schuster','K. Wagner','A. Fischer','T. Krüger','N. Schmitt','R. Becker','C. Lange'];
+const TECHS = ['4G LTE','5G NSA','5G SA'];
+const BANDS = ['700 MHz','800 MHz','900 MHz','1800 MHz','2100 MHz','2600 MHz','3500 MHz'];
+const TASK_CATEGORIES = ['Planung','Funkplanung','Bauausführung','Inbetriebnahme','Messung & Test','Dokumentation','Abnahme'];
+const TASK_STATUSES = ['Nicht gestartet','In Bearbeitung','Abgeschlossen','Überfällig','Blockiert'];
+const RISK_CATEGORIES = ['Termin','Budget','Genehmigung','Technik','Lieferkette','Personal'];
+const ROLES = ['Projektleiter','Projektkoordinator','Projektmanager','PMO','Telekommunikationsingenieur','Netzingenieur','RF-Ingenieur','Bauingenieur','Field Engineer','Techniker','Datenanalyst','Qualitätsmanager'];
+const TASK_NAMES = {
+  'Planung':['Standortakquise','Genehmigungsverfahren einleiten','Projektkonzept erstellen','Ressourcenplanung'],
+  'Funkplanung':['LTE-Funkplanung durchführen','Atoll-Simulation erstellen','Frequenzplanung abstimmen','Zellplanung optimieren'],
+  'Bauausführung':['Antennenmontage','Kabeltiefbau','Mastbau','Stromanschluss herstellen'],
+  'Inbetriebnahme':['Site-Integration','Netzintegration','Parametrierung','Funktionstest'],
+  'Messung & Test':['Drive-Test-Kampagne durchführen','KPI-Messung auswerten','Funkversorgung bewerten','Optimierungspotenzial identifizieren'],
+  'Dokumentation':['Technische Dokumentation erstellen','Abnahmeprotokoll erstellen','As-Built-Unterlagen erstellen'],
+  'Abnahme':['Kundenabnahme','Interne Qualitätsprüfung','Projektabschlussbericht']
+};
+
+function generateData(){
+  const projects=[], tasks=[], milestones=[], risks=[], resources=[], sites=[], fiber=[];
+  const today = new Date('2026-08-08');
+  let taskSeq=1, msSeq=1, riskSeq=1, siteSeq=1, fiberSeq=1;
+
+  for(let i=1;i<=42;i++){
+    const loc = pick(CITIES);
+    const type = pick(PROJECT_TYPES);
+    const status = pick(STATUSES);
+    const priority = pick(PRIORITIES);
+    const startOffset = rndInt(-260,60);
+    const start = new Date(today); start.setDate(start.getDate()+startOffset);
+    const durDays = rndInt(90,320);
+    const end = new Date(start); end.setDate(end.getDate()+durDays);
+    let progress = status==='Abgeschlossen'?100: status==='Geplant'?rndInt(0,8): clamp(Math.round(((today-start)/(end-start))*100)+rndInt(-18,10),3,97);
+    if(status==='Pausiert') progress = clamp(progress-rndInt(5,20),0,90);
+    const budget = rndInt(180000,4200000);
+    let costFactor = status==='Abgeschlossen'? rnd(.88,1.14) : rnd(.55, (progress/100)+ .25);
+    const actualCost = Math.round(budget*costFactor);
+    const riskLevel = pick(['Niedrig','Mittel','Hoch','Kritisch']);
+    const tech = pick(TECHS);
+    const band = pick(BANDS);
+    const p = {
+      id: uid('PRJ',i), name: `${type} ${loc.city} ${['Nord','Süd','Ost','West','Zentrum'][rndInt(0,4)]}`,
+      type, company: pick(COMPANIES), region: loc.region, state: loc.state, city: loc.city,
+      manager: pick(MANAGERS), status, priority, progress, budget, actualCost,
+      riskLevel, startDate: start.toISOString().slice(0,10), endDate: end.toISOString().slice(0,10),
+      technology: tech, band
+    };
+    projects.push(p);
+
+    // tasks
+    const nTasks = rndInt(5,9);
+    for(let t=0;t<nTasks;t++){
+      const cat = pick(TASK_CATEGORIES);
+      const tname = pick(TASK_NAMES[cat]);
+      const tStart = new Date(start); tStart.setDate(tStart.getDate()+Math.round((t/nTasks)*durDays));
+      const plannedDur = rndInt(8,30);
+      const tDue = new Date(tStart); tDue.setDate(tDue.getDate()+plannedDur);
+      let tStatus = pick(TASK_STATUSES);
+      if(status==='Abgeschlossen') tStatus='Abgeschlossen';
+      const tCompleted = tStatus==='Abgeschlossen' ? new Date(tDue.getTime()+rndInt(-4,9)*86400000) : null;
+      const delay = tStatus==='Überfällig'? rndInt(2,21) : (tCompleted? Math.max(0,daysBetween(tDue,tCompleted)) : 0);
+      tasks.push({
+        id: uid('TSK',taskSeq++), projectId:p.id, name:tname, category:cat, owner: pick(MANAGERS),
+        status: tStatus, priority: pick(PRIORITIES), progress: tStatus==='Abgeschlossen'?100: tStatus==='Nicht gestartet'?0:rndInt(10,90),
+        start: tStart.toISOString().slice(0,10), due: tDue.toISOString().slice(0,10),
+        completed: tCompleted? tCompleted.toISOString().slice(0,10): null,
+        delayDays: delay, plannedDuration: plannedDur, actualDuration: tCompleted? daysBetween(tStart,tCompleted): null
+      });
+    }
+
+    // milestones
+    const msNames = ['Genehmigung erteilt','Bauausführung abgeschlossen','Netzintegration abgeschlossen','Projektabnahme'];
+    for(let m=0;m<4;m++){
+      const planned = new Date(start); planned.setDate(planned.getDate()+Math.round(((m+1)/4)*durDays));
+      const isPast = planned < today;
+      const delay = isPast? rndInt(-4,14): 0;
+      const actual = isPast? new Date(planned.getTime()+delay*86400000): null;
+      const msStatus = !isPast? 'Geplant' : (delay>7?'Verzögert':'Erreicht');
+      milestones.push({
+        id:uid('MS',msSeq++), name: msNames[m], projectId:p.id,
+        plannedDate: planned.toISOString().slice(0,10),
+        actualDate: actual? actual.toISOString().slice(0,10): null,
+        status: msStatus, progress: msStatus==='Erreicht'?100: msStatus==='Verzögert'?rndInt(60,95):rndInt(0,60),
+        delay: isPast? Math.max(0,delay):0, owner: p.manager
+      });
+    }
+
+    // risks
+    const nRisks = rndInt(1,3);
+    for(let r=0;r<nRisks;r++){
+      const prob = rndInt(1,5), impact = rndInt(1,5);
+      const score = prob*impact;
+      const level = score>=15?'Kritisch': score>=9?'Hoch': score>=4?'Mittel':'Niedrig';
+      const cat = pick(RISK_CATEGORIES);
+      const titles = {
+        'Termin':'Verzögerung durch Genehmigungsverfahren','Budget':'Kostensteigerung bei Material','Genehmigung':'Ausstehende Standortgenehmigung',
+        'Technik':'Interferenzprobleme im Zielband','Lieferkette':'Lieferverzug bei Funktechnik','Personal':'Engpass bei Fachpersonal'
+      };
+      const due = new Date(today); due.setDate(due.getDate()+rndInt(5,90));
+      risks.push({
+        id:uid('RSK',riskSeq++), projectId:p.id, title:titles[cat], category:cat, probability:prob, impact:impact,
+        score, level, owner: pick(MANAGERS), status: pick(['Offen','In Bearbeitung','Mitigiert','Geschlossen']),
+        mitigation: 'Regelmäßiges Monitoring und Eskalation an Projektleitung', dueDate: due.toISOString().slice(0,10)
+      });
+    }
+
+    // sites (technical) — mostly for rollout/RAN/5G types
+    if(!/Glasfaser|FTTH/.test(type)){
+      const nSites = rndInt(1,3);
+      for(let s=0;s<nSites;s++){
+        const jitterLat = loc.lat + rnd(-0.09,0.09), jitterLng = loc.lng + rnd(-0.09,0.09);
+        const commission = new Date(start); commission.setDate(commission.getDate()+rndInt(20,durDays));
+        sites.push({
+          id: uid('STE',siteSeq++), projectId:p.id, name:`Standort ${loc.city}-${s+1}`, city:loc.city, state:loc.state,
+          lat:jitterLat, lng:jitterLng, technology:tech, band,
+          status: pick(['Geplant','Im Bau','Aktiv','Optimierung']), cellCount: rndInt(1,6),
+          commissionDate: commission.toISOString().slice(0,10),
+          rsrp: -Math.round(rnd(75,112)), rsrq: -Math.round(rnd(6,18)), sinr: Math.round(rnd(-2,26)),
+          cqi: rndInt(4,15), throughput: Math.round(rnd(18,420)), coverage: rnd(78,99.6), availability: rnd(96,99.99)
+        });
+      }
+    }
+    // fiber rows
+    if(/Glasfaser|FTTH/.test(type)){
+      const planned = rndInt(800,9000);
+      const realized = Math.round(planned*(progress/100)*rnd(.8,1));
+      fiber.push({
+        id: uid('FTH',fiberSeq++), projectId:p.id, project:p.name, region:loc.region, city:loc.city,
+        plannedConnections: planned, realizedConnections: realized, progress: Math.round((realized/planned)*100),
+        fiberLength: Math.round(planned*rnd(0.018,0.03)), activationRate: rnd(38,92)
+      });
+    }
+  }
+
+  // resources
+  for(let r=1;r<=38;r++){
+    const assigned = rndInt(80,220);
+    const actual = Math.round(assigned*rnd(.75,1.22));
+    resources.push({
+      id: uid('RES',r), name: `Mitarbeiter ${r}`, role: pick(ROLES), team: pick(['RAN & Funk','Bau & Rollout','PMO','Glasfaser','Messung & QS']),
+      location: pick(CITIES).city, assignedHours: assigned, actualHours: actual,
+      utilization: clamp(Math.round((actual/assigned)*100),0,160), taskCount: rndInt(2,14)
+    });
+  }
+
+  return {projects,tasks,milestones,risks,resources,sites,fiber};
+}
+
+/* ---------------------------------------------------------------------
+   4. COLUMN MAPPING (import flexibility)
+--------------------------------------------------------------------- */
+const COLUMN_MAP = {
+  name:['projekt','projektname','project_name','name'],
+  type:['projektart','type','art'],
+  company:['unternehmen','firma','company'],
+  region:['region'],
+  state:['bundesland','state'],
+  city:['stadt','city','ort'],
+  manager:['projektleiter','manager','pl'],
+  status:['status'],
+  priority:['priorität','prioritaet','priority'],
+  progress:['fortschritt','progress'],
+  budget:['budget'],
+  actualCost:['tatsächlichekosten','tatsaechlichekosten','actual_cost','istkosten'],
+  startDate:['start','startdatum','projektstart'],
+  endDate:['ende','enddatum','projektende'],
+  rsrp:['rsrp','rsrp_dbm'],
+  throughput:['durchsatz','throughput','throughput_mbps']
+};
+function normalizeKey(k){ return String(k).toLowerCase().replace(/[\s\-_.]/g,''); }
+function mapRowToProject(row, idx){
+  const norm={}; Object.keys(row).forEach(k=>norm[normalizeKey(k)]=row[k]);
+  function find(field){
+    for(const alias of COLUMN_MAP[field]){ if(norm[normalizeKey(alias)]!==undefined) return norm[normalizeKey(alias)]; }
+    return undefined;
+  }
+  const loc = pick(CITIES);
+  return {
+    id: uid('PRJ',idx+1),
+    name: find('name') || `Projekt ${idx+1}`,
+    type: find('type') || pick(PROJECT_TYPES),
+    company: find('company') || pick(COMPANIES),
+    region: find('region') || loc.region,
+    state: find('state') || loc.state,
+    city: find('city') || loc.city,
+    manager: find('manager') || pick(MANAGERS),
+    status: find('status') || pick(STATUSES),
+    priority: find('priority') || pick(PRIORITIES),
+    progress: Number(find('progress')) || rndInt(0,100),
+    budget: Number(find('budget')) || rndInt(150000,3000000),
+    actualCost: Number(find('actualCost')) || 0,
+    riskLevel: pick(['Niedrig','Mittel','Hoch','Kritisch']),
+    startDate: find('startDate') || '2026-01-01',
+    endDate: find('endDate') || '2026-12-01',
+    technology: pick(TECHS), band: pick(BANDS)
+  };
+}
+
+/* ---------------------------------------------------------------------
+   5. IMPORT FLOW
+--------------------------------------------------------------------- */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+document.getElementById('pickFileBtn').addEventListener('click',()=>fileInput.click());
+dropzone.addEventListener('click',()=>fileInput.click());
+dropzone.addEventListener('dragover',e=>{e.preventDefault();dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop',e=>{e.preventDefault();dropzone.classList.remove('drag');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change',e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+document.getElementById('loadSampleBtn').addEventListener('click',()=>runImport(null));
+document.getElementById('newImportBtn').addEventListener('click',()=>{
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('landing').style.display='flex';
+});
+
+function handleFile(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(!['xlsx','xls','csv'].includes(ext)){
+    showToast('Das Dateiformat wird nicht unterstützt.', true); return;
+  }
+  runImport(file);
+}
+
+function showToast(msg, isError){
+  const t=document.getElementById('toast');
+  t.innerHTML = (isError? icon('alert-circle'): icon('check-circle-2')) + `<span>${msg}</span>`;
+  t.classList.toggle('error', !!isError);
+  t.classList.add('show');
+  refreshIcons();
+  setTimeout(()=>t.classList.remove('show'),3400);
+}
+
+const IMPORT_STEPS = [
+  ['Datei wird analysiert…','Struktur und Format werden geprüft.'],
+  ['Datensatz wird geprüft…','Zeilen und Felder werden validiert.'],
+  ['Spalten werden erkannt…','Datenfelder werden automatisch zugeordnet.'],
+  ['Datenqualität wird bewertet…','Vollständigkeit und Konsistenz werden berechnet.'],
+  ['Dashboard wird vorbereitet…','Kennzahlen und Diagramme werden erstellt.']
+];
+
+function runImport(file){
+  const overlay=document.getElementById('importOverlay');
+  overlay.classList.remove('hidden');
+  const stepText=document.getElementById('importStepText'), subText=document.getElementById('importSubText'), fill=document.getElementById('importProgressFill');
+  let i=0;
+  fill.style.width='0%';
+  function nextStep(){
+    if(i>=IMPORT_STEPS.length){ finalizeImport(file); return; }
+    stepText.textContent = IMPORT_STEPS[i][0];
+    subText.textContent = IMPORT_STEPS[i][1];
+    fill.style.width = Math.round(((i+1)/IMPORT_STEPS.length)*100)+'%';
+    i++;
+    setTimeout(nextStep, 430);
+  }
+  nextStep();
+}
+
+function finalizeImport(file){
+  try{
+    if(!file){
+      STATE.data = generateData();
+      STATE.fileName = 'Beispieldaten – Deutsche Telekommunikationsbranche';
+      STATE.fileSize = null;
+      afterDataReady(42, Object.keys(STATE.data.projects[0]).length);
+      return;
+    }
+    if(!xlsxReady()){
+      document.getElementById('importOverlay').classList.add('hidden');
+      showToast('Die Import-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.', true);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        let rows=[];
+        if(file.name.toLowerCase().endsWith('.csv')){
+          const wb = XLSX.read(e.target.result, {type:'binary'});
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        } else {
+          const wb = XLSX.read(e.target.result, {type:'array'});
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        }
+        if(!rows.length){ throw new Error('empty'); }
+        const projects = rows.map((r,idx)=>mapRowToProject(r,idx));
+        // synthesize related datasets from imported projects so all views remain functional
+        const synthetic = generateData();
+        synthetic.projects = projects;
+        STATE.data = synthetic;
+        STATE.fileName = file.name;
+        STATE.fileSize = file.size;
+        afterDataReady(rows.length, Object.keys(rows[0]).length);
+      }catch(err){
+        document.getElementById('importOverlay').classList.add('hidden');
+        showToast('Die Datei konnte nicht gelesen werden.', true);
+      }
+    };
+    reader.onerror = function(){
+      document.getElementById('importOverlay').classList.add('hidden');
+      showToast('Die Datei konnte nicht gelesen werden.', true);
+    };
+    if(file.name.toLowerCase().endsWith('.csv')) reader.readAsBinaryString(file);
+    else reader.readAsArrayBuffer(file);
+  }catch(err){
+    document.getElementById('importOverlay').classList.add('hidden');
+    showToast('Die Datei enthält keine verwertbaren Datensätze.', true);
+  }
+}
+
+function afterDataReady(recordCount, colCount){
+  computeQuality(recordCount, colCount);
+  setTimeout(()=>{
+    document.getElementById('importOverlay').classList.add('hidden');
+    document.getElementById('landing').style.display='none';
+    document.getElementById('app').classList.add('active');
+    document.getElementById('fileChipText').textContent = STATE.fileName.length>34? STATE.fileName.slice(0,34)+'…' : STATE.fileName;
+    document.getElementById('sbRecordCount').textContent = fmtNum(recordCount)+' Datensätze';
+    buildSidebar();
+    populateFilterOptions();
+    navigate('overview');
+    showToast('Import erfolgreich abgeschlossen');
+    refreshIcons();
+  }, 300);
+}
+
+function computeQuality(recordCount,colCount){
+  const projects = STATE.data.projects;
+  let missing=0, invalidDates=0;
+  const problemCols=[];
+  projects.forEach(p=>{
+    if(!p.budget || p.budget<=0) missing++;
+    if(new Date(p.endDate) < new Date(p.startDate)) invalidDates++;
+  });
+  const dupIds = projects.length - new Set(projects.map(p=>p.id)).size;
+  const totalCells = recordCount*colCount;
+  const qualityIndex = clamp(100 - ((missing+invalidDates+dupIds)/Math.max(1,projects.length))*35, 62, 99.8);
+  if(missing>0) problemCols.push({col:'Budget', issue:`Die Spalte 'Budget' enthält ${missing} fehlende oder ungültige Werte.`});
+  if(invalidDates>0) problemCols.push({col:'Enddatum', issue:`Die Spalte 'Enddatum' enthält ${invalidDates} ungültige Datumswerte.`});
+  STATE.quality = { recordCount, colCount, missing, invalidDates, dupIds, qualityIndex, problemCols, updated: new Date() };
+}
+
+/* ---------------------------------------------------------------------
+   6. SIDEBAR / NAVIGATION
+--------------------------------------------------------------------- */
+const NAV = [
+  {group:'Übersicht', items:[ {id:'overview', label:'Projektübersicht', ic:'layout-dashboard'} ]},
+  {group:'Projektmanagement', items:[
+    {id:'portfolio', label:'Projektportfolio', ic:'briefcase'},
+    {id:'tasks', label:'Aufgaben', ic:'check-square'},
+    {id:'schedule', label:'Zeitplan', ic:'calendar-range'},
+    {id:'milestones', label:'Meilensteine', ic:'flag'},
+  ]},
+  {group:'Projektsteuerung', items:[
+    {id:'budget', label:'Budget & Kosten', ic:'euro'},
+    {id:'risks', label:'Risiken', ic:'alert-triangle'},
+    {id:'resources', label:'Ressourcen', ic:'users'},
+  ]},
+  {group:'Telekommunikation', items:[
+    {id:'network', label:'Funknetz', ic:'radio-tower'},
+    {id:'sites', label:'Standorte', ic:'map-pin'},
+    {id:'fiber', label:'Glasfaser', ic:'cable'},
+  ]},
+  {group:'Analyse', items:[
+    {id:'analytics', label:'Analysen', ic:'bar-chart-3'},
+    {id:'insights', label:'Management-Erkenntnisse', ic:'lightbulb'},
+  ]},
+  {group:'', items:[
+    {id:'reports', label:'Berichte', ic:'file-text'},
+    {id:'quality', label:'Datenqualität', ic:'shield-check'},
+    {id:'settings', label:'Einstellungen', ic:'settings'},
+  ]},
+];
+const VIEW_TITLES = {}; NAV.forEach(g=>g.items.forEach(i=>VIEW_TITLES[i.id]=i.label));
+
+function buildSidebar(){
+  const nav = document.getElementById('sbNav');
+  nav.innerHTML = NAV.map(g=>`
+    <div class="sb-group">
+      ${g.group? `<div class="sb-group-label">${g.group}</div>`:''}
+      ${g.items.map(it=>`<div class="sb-item" data-view="${it.id}">${icon(it.ic)}<span>${it.label}</span></div>`).join('')}
+    </div>`).join('');
+  nav.querySelectorAll('.sb-item').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.view)));
+  refreshIcons();
+}
+
+function navigate(viewId){
+  STATE.view = viewId;
+  document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active', el.dataset.view===viewId));
+  document.getElementById('crumbTitle').textContent = VIEW_TITLES[viewId] || 'Projektübersicht';
+  renderView(viewId);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ---------------------------------------------------------------------
+   7. FILTERING
+--------------------------------------------------------------------- */
+function populateFilterOptions(){
+  const p = STATE.data.projects;
+  const uniq = f => [...new Set(p.map(x=>x[f]).filter(Boolean))].sort();
+  STATE._opts = {
+    type: uniq('type'), company: uniq('company'), state: uniq('state'),
+    region: uniq('region'), city: uniq('city'), manager: uniq('manager'),
+    status: uniq('status'), priority: uniq('priority'), technology: uniq('technology'), riskLevel: uniq('riskLevel')
+  };
+}
+function filteredProjects(){
+  const f=STATE.filters;
+  return STATE.data.projects.filter(p=>
+    (!f.type||p.type===f.type) && (!f.company||p.company===f.company) &&
+    (!f.state||p.state===f.state) && (!f.region||p.region===f.region) &&
+    (!f.city||p.city===f.city) && (!f.manager||p.manager===f.manager) &&
+    (!f.status||p.status===f.status) && (!f.priority||p.priority===f.priority) &&
+    (!f.tech||p.technology===f.tech) && (!f.risk||p.riskLevel===f.risk)
+  );
+}
+function relatedIds(){ return new Set(filteredProjects().map(p=>p.id)); }
+
+function renderGlobalFilterBar(container){
+  const o = STATE._opts;
+  const sel = (field,label,options)=>`
+    <div><label>${label}</label><select class="fselect" data-filter="${field}">
+      <option value="">Alle</option>
+      ${options.map(v=>`<option value="${v}" ${STATE.filters[field]===v?'selected':''}>${v}</option>`).join('')}
+    </select></div>`;
+  container.innerHTML = `
+    ${sel('type','Projektart',o.type)}
+    ${sel('status','Status',o.status)}
+    ${sel('priority','Priorität',o.priority)}
+    ${sel('state','Bundesland',o.state)}
+    ${sel('manager','Projektleiter',o.manager)}
+    ${sel('risk','Risikoniveau',o.riskLevel)}
+    <div class="filter-reset" id="filterResetBtn">Filter zurücksetzen</div>
+  `;
+  container.querySelectorAll('[data-filter]').forEach(elm=>{
+    elm.addEventListener('change',()=>{ STATE.filters[elm.dataset.filter]=elm.value; renderView(STATE.view); });
+  });
+  document.getElementById('filterResetBtn').addEventListener('click',()=>{
+    Object.keys(STATE.filters).forEach(k=>STATE.filters[k]='');
+    renderView(STATE.view);
+  });
+}
+
+/* ---------------------------------------------------------------------
+   8. GENERIC TABLE COMPONENT
+--------------------------------------------------------------------- */
+function renderTable(opts){
+  // opts: {id, columns:[{key,label,fmt}], rows, pageSize, searchable, searchKeys}
+  const pageSize = opts.pageSize || 10;
+  const pageKey = opts.id;
+  if(STATE.tablePages[pageKey]===undefined) STATE.tablePages[pageKey]=0;
+  const search = STATE.searchTerms[pageKey] || '';
+  let rows = opts.rows;
+  if(search && opts.searchKeys){
+    const s = search.toLowerCase();
+    rows = rows.filter(r=>opts.searchKeys.some(k=>String(r[k]||'').toLowerCase().includes(s)));
+  }
+  const sortState = STATE.tableSort[pageKey];
+  if(sortState){
+    rows = [...rows].sort((a,b)=>{
+      let av=a[sortState.key], bv=b[sortState.key];
+      if(typeof av==='number'&&typeof bv==='number') return sortState.dir*(av-bv);
+      return sortState.dir*String(av||'').localeCompare(String(bv||''),'de');
+    });
+  }
+  const total = rows.length;
+  const totalPages = Math.max(1,Math.ceil(total/pageSize));
+  STATE.tablePages[pageKey] = clamp(STATE.tablePages[pageKey],0,totalPages-1);
+  const start = STATE.tablePages[pageKey]*pageSize;
+  const pageRows = rows.slice(start,start+pageSize);
+
+  const toolbar = opts.searchable ? `
+    <div class="table-toolbar">
+      <div class="search-wrap">${icon('search')}<input class="fsearch" placeholder="${opts.searchPlaceholder||'Suchen…'}" value="${search}" data-search="${pageKey}"></div>
+      <div style="display:flex;gap:8px;">
+        ${opts.exportName? `<button class="small-btn" data-export="${pageKey}">${icon('download')}Exportieren</button>`:''}
+      </div>
+    </div>` : '';
+
+  const thead = `<tr>${opts.columns.map(c=>{
+    const active = sortState && sortState.key===c.key;
+    const ind = active ? (sortState.dir===1?'▲':'▼') : '';
+    return `<th data-sort="${c.key}" data-page="${pageKey}">${c.label}<span class="sort-ind">${ind}</span></th>`;
+  }).join('')}</tr>`;
+
+  const tbody = pageRows.length ? pageRows.map(r=>`<tr>${opts.columns.map(c=>`<td>${c.fmt? c.fmt(r[c.key],r): (r[c.key]??'–')}</td>`).join('')}</tr>`).join('')
+    : `<tr><td colspan="${opts.columns.length}" style="text-align:center;color:var(--text-faint);padding:26px;">Für diese Auswahl sind keine ausreichenden Daten vorhanden.</td></tr>`;
+
+  const html = `
+    ${toolbar}
+    <div class="table-wrap"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>
+    <div class="table-foot">
+      <span>${fmtNum(total)} Datensätze · Seite ${totalPages? STATE.tablePages[pageKey]+1:0} von ${totalPages}</span>
+      <div class="pager">
+        <button data-pg="prev" data-page="${pageKey}" ${STATE.tablePages[pageKey]===0?'disabled':''}>${icon('chevron-left')}</button>
+        <span class="cur">${totalPages? STATE.tablePages[pageKey]+1:0}</span>
+        <button data-pg="next" data-page="${pageKey}" ${STATE.tablePages[pageKey]>=totalPages-1?'disabled':''}>${icon('chevron-right')}</button>
+      </div>
+    </div>`;
+  return {html, wireUp: (root)=>{
+    root.querySelectorAll(`[data-search="${pageKey}"]`).forEach(inp=>{
+      inp.addEventListener('input', debounce(()=>{ STATE.searchTerms[pageKey]=inp.value; STATE.tablePages[pageKey]=0; renderView(STATE.view); },320));
+    });
+    root.querySelectorAll(`[data-sort]`).forEach(th=>{
+      if(th.dataset.page!==pageKey) return;
+      th.addEventListener('click',()=>{
+        const key = th.dataset.sort;
+        const cur = STATE.tableSort[pageKey];
+        STATE.tableSort[pageKey] = (cur && cur.key===key) ? {key,dir:-cur.dir} : {key,dir:1};
+        renderView(STATE.view);
+      });
+    });
+    root.querySelectorAll(`[data-pg]`).forEach(btn=>{
+      if(btn.dataset.page!==pageKey) return;
+      btn.addEventListener('click',()=>{
+        STATE.tablePages[pageKey] += (btn.dataset.pg==='next'?1:-1);
+        renderView(STATE.view);
+      });
+    });
+    root.querySelectorAll(`[data-export="${pageKey}"]`).forEach(btn=>{
+      btn.addEventListener('click',()=>exportRows(rows, opts.exportName));
+    });
+    refreshIcons();
+  }};
+}
+function debounce(fn,ms){ let t; return (...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);}; }
+function exportRows(rows, name){
+  if(!xlsxReady()){
+    showToast('Die Export-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.', true);
+    return;
+  }
+  try{
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Export');
+    XLSX.writeFile(wb, `${name}.xlsx`);
+    showToast('Export erfolgreich erstellt');
+  }catch(e){ showToast('Export konnte nicht erstellt werden.', true); }
+}
+
+/* ---------------------------------------------------------------------
+   9. CHART HELPERS
+--------------------------------------------------------------------- */
+/* ---- LIBRARY GUARDS -------------------------------------------------
+   All three of these libraries (Chart.js, XLSX, Leaflet) load asynchronously
+   from a CDN with fallback (see <head>). They are NOT guaranteed to be present
+   by the time this script block executes, and they are never guaranteed to be
+   present at all (e.g. if a user's network blocks every CDN). Every function
+   below that touches window.Chart / window.XLSX / window.L therefore checks
+   for the library first and degrades gracefully (visible message in German,
+   console warning) instead of throwing an uncaught ReferenceError that would
+   stop the rest of the application's JavaScript from running. -------------- */
+function chartJsReady(){ return typeof window.Chart !== 'undefined'; }
+function xlsxReady(){ return typeof window.XLSX !== 'undefined'; }
+function leafletReady(){ return typeof window.L !== 'undefined'; }
+function refreshIcons(){ if(typeof window.lucide !== 'undefined' && window.lucide.createIcons){ window.lucide.createIcons(); } }
+let _chartDefaultsApplied = false;
+function ensureChartDefaults(){
+  if(_chartDefaultsApplied || !chartJsReady()) return;
+  Chart.defaults.color = '#9BA5B8';
+  Chart.defaults.font.family = "Inter";
+  Chart.defaults.borderColor = '#232B3C';
+  _chartDefaultsApplied = true;
+}
+const PALETTE = ['#17D9B4','#5B8DEF','#F0A93E','#EF5A6F','#8B7CF6','#33D690','#4FB6E0'];
+function mkChart(ctx, config){
+  const canvasId = ctx.canvas.id;
+  if(!chartJsReady()){
+    console.warn('Chart.js konnte nicht geladen werden — Diagramm "'+canvasId+'" wird übersprungen.');
+    const wrap = ctx.canvas.closest('.chart-wrap');
+    if(wrap) wrap.innerHTML = '<div class="emptynote">Diagrammbibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.</div>';
+    return;
+  }
+  ensureChartDefaults();
+  if(STATE.charts[canvasId]) STATE.charts[canvasId].destroy();
+  STATE.charts[canvasId] = new Chart(ctx, config);
+}
+
+/* ---------------------------------------------------------------------
+   10. VIEW RENDERERS
+--------------------------------------------------------------------- */
+const content = document.getElementById('content');
+
+function renderView(viewId){
+  const renderers = {
+    overview: viewOverview, portfolio: viewPortfolio, tasks: viewTasks, schedule: viewSchedule,
+    milestones: viewMilestones, budget: viewBudget, risks: viewRisks, resources: viewResources,
+    network: viewNetwork, sites: viewSites, fiber: viewFiber, analytics: viewAnalytics,
+    insights: viewInsights, reports: viewReports, quality: viewQuality, settings: viewSettings
+  };
+  content.innerHTML = `<div class="view active" id="viewRoot"></div>`;
+  (renderers[viewId] || viewOverview)();
+  refreshIcons();
+}
+
+function headBlock(title, desc){
+  return `<div class="view-head"><div class="view-title">${title}</div><div class="view-desc">${desc}</div></div>`;
+}
+
+/* ---- 10.1 Übersicht ---- */
+function viewOverview(){
+  const root = document.getElementById('viewRoot');
+  const all = filteredProjects();
+  const active = all.filter(p=>p.status==='In Umsetzung').length;
+  const done = all.filter(p=>p.status==='Abgeschlossen').length;
+  const avgProgress = all.length? all.reduce((s,p)=>s+p.progress,0)/all.length : 0;
+  const totalBudget = all.reduce((s,p)=>s+p.budget,0);
+  const actualCost = all.reduce((s,p)=>s+p.actualCost,0);
+  const variance = totalBudget? ((actualCost-totalBudget)/totalBudget)*100 : 0;
+  const relIds = new Set(all.map(p=>p.id));
+  const overdueTasks = STATE.data.tasks.filter(t=>relIds.has(t.projectId)&&t.status==='Überfällig').length;
+  const criticalRisks = STATE.data.risks.filter(r=>relIds.has(r.projectId)&&r.level==='Kritisch').length;
+  const atRiskMs = STATE.data.milestones.filter(m=>relIds.has(m.projectId)&&m.status==='Verzögert').length;
+  const relatedResources = STATE.data.resources;
+  const avgUtil = relatedResources.length? relatedResources.reduce((s,r)=>s+r.utilization,0)/relatedResources.length : 0;
+
+  root.innerHTML = `
+    ${headBlock('Projektübersicht','Konsolidierter Status über das gesamte Telekommunikations-Projektportfolio.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('briefcase','Gesamtprojekte', fmtNum(all.length))}
+      ${kpiCard('activity','Aktive Projekte', fmtNum(active))}
+      ${kpiCard('check-circle-2','Abgeschlossene Projekte', fmtNum(done))}
+      ${kpiCard('trending-up','Projektfortschritt', fmtPct(avgProgress))}
+      ${kpiCard('euro','Gesamtbudget', fmtEUR(totalBudget))}
+      ${kpiCard('wallet','Tatsächliche Kosten', fmtEUR(actualCost))}
+      ${kpiCard('scale','Budgetabweichung', (variance>=0?'+':'')+fmtPct(variance), variance>5?'down':(variance< -5?'up':''))}
+      ${kpiCard('clock-alert','Überfällige Aufgaben', fmtNum(overdueTasks), overdueTasks>10?'down':'')}
+      ${kpiCard('alert-triangle','Kritische Risiken', fmtNum(criticalRisks), criticalRisks>3?'down':'')}
+      ${kpiCard('flag-triangle-right','Gefährdete Meilensteine', fmtNum(atRiskMs), atRiskMs>3?'warn':'')}
+      ${kpiCard('users','Ressourcenauslastung', fmtPct(avgUtil), avgUtil>105?'warn':'up')}
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">Projektfortschritt nach Projektart<span class="tag">Ø Fortschritt</span></div>
+        <div class="chart-wrap"><canvas id="chOverviewProgress"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Projektstatus-Verteilung</div>
+        <div class="chart-wrap"><canvas id="chOverviewStatus"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Projektgesundheit<span class="tag">${all.length} Projekte im Fokus</span></div>
+      <div class="health-list" id="healthList"></div>
+    </div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  // charts
+  const byType={};
+  all.forEach(p=>{ byType[p.type]=byType[p.type]||[]; byType[p.type].push(p.progress); });
+  const typeLabels = Object.keys(byType);
+  mkChart(document.getElementById('chOverviewProgress').getContext('2d'),{
+    type:'bar',
+    data:{labels:typeLabels, datasets:[{label:'Fortschritt (%)', data:typeLabels.map(t=>Math.round(byType[t].reduce((a,b)=>a+b,0)/byType[t].length)), backgroundColor:PALETTE[0], borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{font:{size:10}}}, y:{max:100,grid:{color:'#1B2230'}}}}
+  });
+  const statusCounts = STATUSES.map(s=>all.filter(p=>p.status===s).length);
+  mkChart(document.getElementById('chOverviewStatus').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:STATUSES, datasets:[{data:statusCounts, backgroundColor:PALETTE, borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:10,font:{size:11}}}}, cutout:'62%'}
+  });
+
+  // health list
+  const healthList = document.getElementById('healthList');
+  const sample = [...all].sort((a,b)=>b.priority.localeCompare(a.priority)).slice(0,8);
+  healthList.innerHTML = sample.map(p=>{
+    const {level,reason} = projectHealth(p);
+    const color = level==='Stabil'?'var(--ok)':level==='Beobachtung erforderlich'?'var(--warn)':'var(--crit)';
+    return `<div class="health-item">
+      <div class="health-dot" style="background:${color}"></div>
+      <div style="flex:1;">
+        <div class="health-name">${p.name} <span class="badge neutral" style="margin-left:6px;">${p.manager}</span></div>
+        <div class="health-reason">${reason}</div>
+      </div>
+      <div class="badge ${level==='Stabil'?'ok':level==='Beobachtung erforderlich'?'warn':'crit'}">${level}</div>
+    </div>`;
+  }).join('') || `<div class="emptynote">Für diese Auswahl sind keine ausreichenden Daten vorhanden.</div>`;
+}
+function kpiCard(ic,label,value,trend){
+  const trendClass = trend||'';
+  return `<div class="kpi-card"><div class="kpi-label">${icon(ic)} ${label}</div><div class="kpi-value">${value}</div></div>`;
+}
+function projectHealth(p){
+  const scheduleDelay = p.status==='Verzögert' ? rndSeeded(p.id,3,25) : 0;
+  const costVar = p.budget? ((p.actualCost-p.budget)/p.budget)*100 : 0;
+  let issues=[];
+  let level='Stabil';
+  if(p.status==='Verzögert'){ issues.push(`Das Projekt weist eine Terminabweichung von ${scheduleDelay} Tagen auf.`); level='Kritisch'; }
+  if(costVar>8){ issues.push(`Die tatsächlichen Kosten liegen ${costVar.toFixed(1)} % über dem Budget.`); level = level==='Kritisch'?'Kritisch':'Beobachtung erforderlich'; }
+  if(p.riskLevel==='Kritisch'){ issues.push('Das Projekt enthält mindestens ein kritisches Risiko.'); level='Kritisch'; }
+  if(!issues.length){ issues.push('Termin-, Budget- und Risikokennzahlen liegen im Zielkorridor.'); }
+  return { level, reason: issues.join(' ') };
+}
+function rndSeeded(id,min,max){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))%1000; return min+(h%(max-min)); }
+
+/* ---- 10.2 Projektportfolio ---- */
+function viewPortfolio(){
+  const root = document.getElementById('viewRoot');
+  root.innerHTML = `
+    ${headBlock('Projektportfolio','Vollständige Übersicht aller Telekommunikationsprojekte mit Status-, Budget- und Risikokennzahlen.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+  const rows = filteredProjects();
+  const cols = [
+    {key:'id', label:'Projekt-ID'}, {key:'name', label:'Projektname'}, {key:'type', label:'Projektart'},
+    {key:'company', label:'Unternehmen'}, {key:'city', label:'Stadt'}, {key:'state', label:'Bundesland'},
+    {key:'manager', label:'Projektleiter'},
+    {key:'status', label:'Status', fmt:v=>statusBadge(v)},
+    {key:'priority', label:'Priorität', fmt:v=>priorityBadge(v)},
+    {key:'progress', label:'Fortschritt', fmt:v=>progressCell(v)},
+    {key:'budget', label:'Budget', fmt:v=>fmtEUR(v)},
+    {key:'actualCost', label:'Ist-Kosten', fmt:v=>fmtEUR(v)},
+    {key:'riskLevel', label:'Risiko', fmt:v=>riskBadge(v)},
+    {key:'startDate', label:'Start', fmt:v=>fmtDate(v)},
+    {key:'endDate', label:'Ende', fmt:v=>fmtDate(v)},
+  ];
+  const t = renderTable({id:'portfolio', columns:cols, rows, pageSize:10, searchable:true, searchPlaceholder:'Projekt, Stadt oder Projektleiter suchen…', searchKeys:['name','city','manager','company'], exportName:'Projektportfolio'});
+  document.getElementById('tablePanel').innerHTML = t.html;
+  t.wireUp(document.getElementById('tablePanel'));
+}
+function statusBadge(s){
+  const map={'In Umsetzung':'info','Abgeschlossen':'ok','Geplant':'neutral','Pausiert':'warn','Verzögert':'crit',
+    'Nicht gestartet':'neutral','In Bearbeitung':'info','Überfällig':'crit','Blockiert':'warn',
+    'Erreicht':'ok','Aktiv':'ok','Im Bau':'info'};
+  return `<span class="badge ${map[s]||'neutral'}">${s}</span>`;
+}
+function priorityBadge(p){
+  const map={'Niedrig':'neutral','Mittel':'info','Hoch':'warn','Kritisch':'crit'};
+  return `<span class="badge ${map[p]||'neutral'}">${p}</span>`;
+}
+function riskBadge(r){
+  const map={'Niedrig':'ok','Mittel':'info','Hoch':'warn','Kritisch':'crit'};
+  return `<span class="badge ${map[r]||'neutral'}">${r}</span>`;
+}
+function progressCell(v){
+  return `<span class="progress-mini"><i style="width:${clamp(v,0,100)}%"></i></span>${Math.round(v)} %`;
+}
+
+/* ---- 10.3 Aufgaben ---- */
+function viewTasks(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  root.innerHTML = `
+    ${headBlock('Aufgaben','Aufgabenverfolgung über alle Projekte mit Status, Verantwortlichkeit und Verzögerung.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('list-checks','Gesamtaufgaben', fmtNum(STATE.data.tasks.filter(t=>ids.has(t.projectId)).length))}
+      ${kpiCard('clock-alert','Überfällig', fmtNum(STATE.data.tasks.filter(t=>ids.has(t.projectId)&&t.status==='Überfällig').length),'down')}
+      ${kpiCard('ban','Blockiert', fmtNum(STATE.data.tasks.filter(t=>ids.has(t.projectId)&&t.status==='Blockiert').length),'warn')}
+      ${kpiCard('check-circle-2','Abgeschlossen', fmtNum(STATE.data.tasks.filter(t=>ids.has(t.projectId)&&t.status==='Abgeschlossen').length),'up')}
+    </div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+  const rows = STATE.data.tasks.filter(t=>ids.has(t.projectId));
+  const cols=[
+    {key:'id',label:'Aufgaben-ID'},{key:'projectId',label:'Projekt-ID'},{key:'name',label:'Aufgabe'},
+    {key:'category',label:'Kategorie'},{key:'owner',label:'Verantwortlicher'},
+    {key:'status',label:'Status',fmt:v=>statusBadge(v)}, {key:'priority',label:'Priorität',fmt:v=>priorityBadge(v)},
+    {key:'progress',label:'Fortschritt',fmt:v=>progressCell(v)},
+    {key:'due',label:'Fälligkeitsdatum',fmt:v=>fmtDate(v)},
+    {key:'delayDays',label:'Verzögerung (Tage)', fmt:v=>v>0? `<span style="color:var(--crit);font-weight:600;">${v}</span>`:'0'},
+  ];
+  const t = renderTable({id:'tasks', columns:cols, rows, pageSize:10, searchable:true, searchPlaceholder:'Aufgabe oder Verantwortlichen suchen…', searchKeys:['name','owner'], exportName:'Aufgaben'});
+  document.getElementById('tablePanel').innerHTML = t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.4 Zeitplan (Gantt) ---- */
+function viewSchedule(){
+  const root = document.getElementById('viewRoot');
+  const projects = filteredProjects().slice(0,16);
+  const allDates = projects.flatMap(p=>[new Date(p.startDate),new Date(p.endDate)]);
+  const minD = allDates.length? new Date(Math.min(...allDates)) : new Date();
+  const maxD = allDates.length? new Date(Math.max(...allDates)) : new Date();
+  const totalSpan = Math.max(1,daysBetween(minD,maxD));
+
+  const months=[]; let cursor=new Date(minD.getFullYear(),minD.getMonth(),1);
+  while(cursor<=maxD){ months.push(new Date(cursor)); cursor.setMonth(cursor.getMonth()+1); }
+
+  const rowsHtml = projects.map(p=>{
+    const left = (daysBetween(minD,p.startDate)/totalSpan)*100;
+    const width = Math.max(1,(daysBetween(p.startDate,p.endDate)/totalSpan)*100);
+    const late = p.status==='Verzögert';
+    const ms = STATE.data.milestones.filter(m=>m.projectId===p.id);
+    const msMarks = ms.map(m=>{
+      const mleft = (daysBetween(minD,m.plannedDate)/totalSpan)*100;
+      return `<div class="gantt-ms" style="left:${mleft}%" title="${m.name} — ${fmtDate(m.plannedDate)}"></div>`;
+    }).join('');
+    return `<div class="gantt-row">
+      <div class="gantt-label" title="${p.name}">${p.name}</div>
+      <div class="gantt-track">
+        <div class="gantt-bar ${late?'late':''}" style="left:${left}%;width:${width}%;" title="${fmtDate(p.startDate)} – ${fmtDate(p.endDate)} · ${p.progress}%">
+          <div class="fill" style="width:${p.progress}%"></div>
+        </div>
+        ${msMarks}
+      </div>
+    </div>`;
+  }).join('');
+
+  const monthsHtml = months.map(m=>{
+    const left = (daysBetween(minD,m)/totalSpan)*100;
+    return `<span style="left:${left}%">${m.toLocaleDateString('de-DE',{month:'short',year:'2-digit'})}</span>`;
+  }).join('');
+
+  root.innerHTML = `
+    ${headBlock('Zeitplan','Interaktive Terminübersicht mit Aufgaben, Meilensteinen und kritischen Abhängigkeiten.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="panel">
+      <div class="panel-title">Projekt-Zeitachse<span class="tag">Top ${projects.length} nach Priorität</span></div>
+      <div class="gantt-wrap">
+        <div class="gantt-header"><div></div><div class="gantt-months">${monthsHtml}</div></div>
+        ${rowsHtml || `<div class="emptynote">Für diese Auswahl sind keine ausreichenden Daten vorhanden.</div>`}
+      </div>
+      <div style="display:flex;gap:18px;margin-top:14px;font-size:11.5px;color:var(--text-faint);">
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:8px;border-radius:3px;background:var(--accent);display:inline-block;"></span>Im Plan</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:8px;border-radius:3px;background:var(--crit);display:inline-block;"></span>Verzögert</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;background:var(--warn);display:inline-block;transform:rotate(45deg);"></span>Meilenstein</div>
+      </div>
+    </div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+}
+
+/* ---- 10.5 Meilensteine ---- */
+function viewMilestones(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  const rows = STATE.data.milestones.filter(m=>ids.has(m.projectId)).map(m=>({...m, projectName: projName(m.projectId)}));
+  root.innerHTML = `
+    ${headBlock('Meilensteine','Kritische Projekt-Meilensteine mit Plan-/Ist-Terminen und Verzögerungen.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+  const cols=[
+    {key:'name',label:'Meilenstein'},{key:'projectName',label:'Projekt'},
+    {key:'plannedDate',label:'Geplantes Datum',fmt:v=>fmtDate(v)},
+    {key:'actualDate',label:'Tatsächliches Datum',fmt:v=>fmtDate(v)},
+    {key:'status',label:'Status',fmt:v=>statusBadge(v)},
+    {key:'progress',label:'Fortschritt',fmt:v=>progressCell(v)},
+    {key:'delay',label:'Verzögerung (Tage)', fmt:v=>v>0?`<span style="color:var(--crit);font-weight:600;">${v}</span>`:'0'},
+    {key:'owner',label:'Verantwortlicher'},
+  ];
+  const t = renderTable({id:'milestones', columns:cols, rows, pageSize:10, searchable:true, searchKeys:['name','projectName'], exportName:'Meilensteine'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+function projName(pid){ const p=STATE.data.projects.find(x=>x.id===pid); return p? p.name : pid; }
+
+/* ---- 10.6 Budget & Kosten ---- */
+function viewBudget(){
+  const root = document.getElementById('viewRoot');
+  const rows = filteredProjects();
+  const totalBudget = rows.reduce((s,p)=>s+p.budget,0);
+  const actual = rows.reduce((s,p)=>s+p.actualCost,0);
+  const remaining = totalBudget-actual;
+  const consumption = totalBudget? (actual/totalBudget)*100:0;
+  const variance = totalBudget? ((actual-totalBudget)/totalBudget)*100:0;
+
+  root.innerHTML = `
+    ${headBlock('Budget & Kosten','Budgetkontrolle und Kostenentwicklung über das gesamte Projektportfolio.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('euro','Gesamtbudget', fmtEUR(totalBudget))}
+      ${kpiCard('wallet','Tatsächliche Kosten', fmtEUR(actual))}
+      ${kpiCard('piggy-bank','Restbudget', fmtEUR(remaining), remaining<0?'down':'up')}
+      ${kpiCard('gauge','Budgetverbrauch', fmtPct(consumption), consumption>95?'warn':'')}
+      ${kpiCard('scale','Budgetabweichung', (variance>=0?'+':'')+fmtPct(variance), variance>5?'down':'up')}
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-title">Budget vs. tatsächliche Kosten (Top 10 Projekte)</div><div class="chart-wrap"><canvas id="chBudgetVsActual"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Kosten nach Projektart</div><div class="chart-wrap"><canvas id="chCostByType"></canvas></div></div>
+    </div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  const top10 = [...rows].sort((a,b)=>b.budget-a.budget).slice(0,10);
+  mkChart(document.getElementById('chBudgetVsActual').getContext('2d'),{
+    type:'bar',
+    data:{labels:top10.map(p=>p.name.length>18?p.name.slice(0,18)+'…':p.name),
+      datasets:[
+        {label:'Budget', data:top10.map(p=>p.budget), backgroundColor:'#5B8DEF', borderRadius:4},
+        {label:'Ist-Kosten', data:top10.map(p=>p.actualCost), backgroundColor:'#17D9B4', borderRadius:4}
+      ]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{labels:{font:{size:11}}}}, scales:{x:{ticks:{font:{size:9}}},y:{ticks:{callback:v=>(v/1000)+'k €'}}}}
+  });
+  const byType={}; rows.forEach(p=>{byType[p.type]=(byType[p.type]||0)+p.actualCost;});
+  mkChart(document.getElementById('chCostByType').getContext('2d'),{
+    type:'pie',
+    data:{labels:Object.keys(byType), datasets:[{data:Object.values(byType), backgroundColor:PALETTE}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:10}}}}}
+  });
+
+  const cols=[
+    {key:'name',label:'Projekt'},{key:'type',label:'Projektart'},
+    {key:'budget',label:'Budget',fmt:fmtEUR},{key:'actualCost',label:'Ist-Kosten',fmt:fmtEUR},
+    {key:'variance',label:'Kostenabweichung',fmt:v=>{
+      const cls = v>5?'crit':v< -5?'ok':'neutral';
+      return `<span class="badge ${cls}">${v>=0?'+':''}${v.toFixed(1)} %</span>`;
+    }},
+  ];
+  const tableRows = rows.map(p=>({...p, variance: p.budget? ((p.actualCost-p.budget)/p.budget)*100:0}));
+  const t = renderTable({id:'budgetTable', columns:cols, rows:tableRows, pageSize:8, searchable:true, searchKeys:['name','type'], exportName:'Budget'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.7 Risiken ---- */
+function viewRisks(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  const rows = STATE.data.risks.filter(r=>ids.has(r.projectId)).map(r=>({...r, projectName: projName(r.projectId)}));
+  const critical = rows.filter(r=>r.level==='Kritisch').length;
+  const high = rows.filter(r=>r.level==='Hoch').length;
+
+  root.innerHTML = `
+    ${headBlock('Risikomanagement','Systematische Erfassung, Bewertung und Steuerung von Projektrisiken.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('alert-octagon','Kritische Risiken', fmtNum(critical),'down')}
+      ${kpiCard('alert-triangle','Hohe Risiken', fmtNum(high),'warn')}
+      ${kpiCard('list','Gesamtrisiken', fmtNum(rows.length))}
+      ${kpiCard('check-circle-2','Mitigiert / Geschlossen', fmtNum(rows.filter(r=>r.status==='Mitigiert'||r.status==='Geschlossen').length),'up')}
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">Risikomatrix<span class="tag">Wahrscheinlichkeit × Auswirkung</span></div>
+        <div id="riskMatrix"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Risiken nach Kategorie</div>
+        <div class="chart-wrap"><canvas id="chRiskCat"></canvas></div>
+      </div>
+    </div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  // matrix
+  const matrixCounts = {};
+  rows.forEach(r=>{ const k=r.probability+'-'+r.impact; matrixCounts[k]=(matrixCounts[k]||0)+1; });
+  let matrixHtml = `<div class="matrix">`;
+  matrixHtml += `<div></div>`;
+  for(let i=1;i<=5;i++) matrixHtml += `<div style="text-align:center;font-size:10px;color:var(--text-faint);">${i}</div>`;
+  for(let prob=5;prob>=1;prob--){
+    matrixHtml += `<div class="matrix-axis">${prob}</div>`;
+    for(let imp=1;imp<=5;imp++){
+      const score=prob*imp;
+      const color = score>=15?'var(--crit)':score>=9?'var(--warn)':score>=4?'#4FB6E0':'var(--ok)';
+      const count = matrixCounts[prob+'-'+imp]||0;
+      matrixHtml += `<div class="matrix-cell" style="background:${color};opacity:${count?1:.28}" title="Wahrscheinlichkeit ${prob} × Auswirkung ${imp}">${count||''}</div>`;
+    }
+  }
+  matrixHtml += `</div><div class="matrix-axis-bottom">Auswirkung →　　（Achse links: Wahrscheinlichkeit ↑）</div>`;
+  document.getElementById('riskMatrix').innerHTML = matrixHtml;
+
+  const byCat={}; rows.forEach(r=>{byCat[r.category]=(byCat[r.category]||0)+1;});
+  mkChart(document.getElementById('chRiskCat').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(byCat), datasets:[{data:Object.values(byCat), backgroundColor:PALETTE[3], borderRadius:5}]},
+    options:{indexAxis:'y', responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#1B2230'}},y:{grid:{display:false}}}}
+  });
+
+  const cols=[
+    {key:'title',label:'Risikotitel'},{key:'projectName',label:'Projekt'},{key:'category',label:'Kategorie'},
+    {key:'probability',label:'Wahrscheinlichkeit'},{key:'impact',label:'Auswirkung'},{key:'score',label:'Risikowert'},
+    {key:'level',label:'Risikostufe',fmt:v=>riskBadge(v)}, {key:'status',label:'Status',fmt:v=>statusBadge(v)},
+    {key:'owner',label:'Verantwortlicher'}, {key:'dueDate',label:'Fälligkeitsdatum',fmt:fmtDate},
+  ];
+  const t = renderTable({id:'risks', columns:cols, rows, pageSize:10, searchable:true, searchKeys:['title','projectName','category'], exportName:'Risiken'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.8 Ressourcen ---- */
+function viewResources(){
+  const root = document.getElementById('viewRoot');
+  const rows = STATE.data.resources;
+  const avgUtil = rows.length? rows.reduce((s,r)=>s+r.utilization,0)/rows.length:0;
+  const overUtil = rows.filter(r=>r.utilization>110).length;
+
+  root.innerHTML = `
+    ${headBlock('Ressourcen','Personaleinsatz, Auslastung und Teamzuordnung über das Projektportfolio.')}
+    <div class="kpi-grid">
+      ${kpiCard('users','Mitarbeiter gesamt', fmtNum(rows.length))}
+      ${kpiCard('gauge','Ø Auslastung', fmtPct(avgUtil), avgUtil>100?'warn':'up')}
+      ${kpiCard('flame','Überlastete Mitarbeiter', fmtNum(overUtil), overUtil>5?'down':'')}
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-title">Auslastung nach Team</div><div class="chart-wrap"><canvas id="chResTeam"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Rollenverteilung</div><div class="chart-wrap"><canvas id="chResRole"></canvas></div></div>
+    </div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  const byTeam={}; rows.forEach(r=>{ byTeam[r.team]=byTeam[r.team]||[]; byTeam[r.team].push(r.utilization); });
+  mkChart(document.getElementById('chResTeam').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(byTeam), datasets:[{data:Object.keys(byTeam).map(t=>Math.round(byTeam[t].reduce((a,b)=>a+b,0)/byTeam[t].length)), backgroundColor:PALETTE[1], borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:'#1B2230'}}}}
+  });
+  const byRole={}; rows.forEach(r=>{byRole[r.role]=(byRole[r.role]||0)+1;});
+  mkChart(document.getElementById('chResRole').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:Object.keys(byRole), datasets:[{data:Object.values(byRole), backgroundColor:PALETTE, borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{boxWidth:9,font:{size:9.5}}}}, cutout:'55%'}
+  });
+  const cols=[
+    {key:'name',label:'Mitarbeiter'},{key:'role',label:'Rolle'},{key:'team',label:'Team'},{key:'location',label:'Standort'},
+    {key:'assignedHours',label:'Geplante Stunden'},{key:'actualHours',label:'Tatsächliche Stunden'},
+    {key:'utilization',label:'Auslastung',fmt:v=>{
+      const cls=v>110?'crit':v>95?'warn':'ok';
+      return `<span class="badge ${cls}">${v} %</span>`;
+    }},
+    {key:'taskCount',label:'Aufgabenanzahl'},
+  ];
+  const t = renderTable({id:'resources', columns:cols, rows, pageSize:10, searchable:true, searchKeys:['name','role','team'], exportName:'Ressourcen'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.9 Funknetz (Technical) ---- */
+function viewNetwork(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  const sites = STATE.data.sites.filter(s=>ids.has(s.projectId));
+  const avg = k => sites.length? sites.reduce((s,x)=>s+x[k],0)/sites.length : 0;
+
+  root.innerHTML = `
+    ${headBlock('Funknetz — Technische Telekommunikationsanalyse','LTE-/5G-Funkplanung, Atoll-Simulation, Drive-Test-Auswertung und Netzwerk-KPIs.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('signal','Ø RSRP', avg('rsrp').toFixed(1)+' dBm')}
+      ${kpiCard('waves','Ø RSRQ', avg('rsrq').toFixed(1)+' dB')}
+      ${kpiCard('activity','Ø SINR', avg('sinr').toFixed(1)+' dB')}
+      ${kpiCard('bar-chart-2','Ø CQI', avg('cqi').toFixed(1))}
+      ${kpiCard('gauge','Ø Durchsatz', avg('throughput').toFixed(0)+' Mbit/s')}
+      ${kpiCard('shield-check','Ø Netzverfügbarkeit', avg('availability').toFixed(2)+' %')}
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Technische Projektanalyse<span class="tag">Standard-Workflow</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--text-dim);">
+        ${['Projektplanung','LTE-Funkplanung','Atoll-Simulation','Drive Test','KPI-Analyse','Funkversorgungsbewertung','Optimierungsmaßnahme','Technische Dokumentation']
+          .map((s,i,arr)=>`<span class="badge info">${s}</span>${i<arr.length-1?icon('arrow-right'):''}`).join('')}
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel"><div class="panel-title">Funkabdeckung nach Technologie</div><div class="chart-wrap"><canvas id="chCoverageTech"></canvas></div></div>
+      <div class="panel"><div class="panel-title">RSRP-Verteilung nach Frequenzband</div><div class="chart-wrap"><canvas id="chRsrpBand"></canvas></div></div>
+    </div>
+
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  const byTech={}; sites.forEach(s=>{ byTech[s.technology]=byTech[s.technology]||[]; byTech[s.technology].push(s.coverage); });
+  mkChart(document.getElementById('chCoverageTech').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(byTech), datasets:[{data:Object.keys(byTech).map(t=>(byTech[t].reduce((a,b)=>a+b,0)/byTech[t].length).toFixed(1)), backgroundColor:PALETTE[0], borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{max:100,grid:{color:'#1B2230'}},x:{grid:{display:false}}}}
+  });
+  const byBand={}; sites.forEach(s=>{ byBand[s.band]=byBand[s.band]||[]; byBand[s.band].push(s.rsrp); });
+  const bandLabels = BANDS.filter(b=>byBand[b]);
+  mkChart(document.getElementById('chRsrpBand').getContext('2d'),{
+    type:'line',
+    data:{labels:bandLabels, datasets:[{label:'Ø RSRP (dBm)', data:bandLabels.map(b=>(byBand[b].reduce((a,c)=>a+c,0)/byBand[b].length).toFixed(1)), borderColor:PALETTE[1], backgroundColor:'rgba(91,141,239,.15)', tension:.35, fill:true}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#1B2230'}}}}
+  });
+
+  const cols=[
+    {key:'name',label:'Standort'},{key:'city',label:'Stadt'},{key:'technology',label:'Technologie'},{key:'band',label:'Frequenzband'},
+    {key:'rsrp',label:'RSRP (dBm)'},{key:'rsrq',label:'RSRQ (dB)'},{key:'sinr',label:'SINR (dB)'},{key:'cqi',label:'CQI'},
+    {key:'throughput',label:'Durchsatz (Mbit/s)'}, {key:'coverage',label:'Abdeckung',fmt:v=>v.toFixed(1)+' %'},
+    {key:'status',label:'Status',fmt:v=>statusBadge(v)},
+  ];
+  const t = renderTable({id:'network', columns:cols, rows:sites, pageSize:10, searchable:true, searchKeys:['name','city'], exportName:'Funknetz-KPIs'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.10 Standorte (Map) ---- */
+function viewSites(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  const sites = STATE.data.sites.filter(s=>ids.has(s.projectId));
+  root.innerHTML = `
+    ${headBlock('Standorte','Geografische Übersicht aller Funkstandorte mit Technologie- und Statusinformationen.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="panel"><div class="panel-title">Standortkarte<span class="tag">${sites.length} Standorte</span></div><div id="siteMap"></div></div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  setTimeout(()=>{
+    if(!leafletReady()){
+      const mapEl = document.getElementById('siteMap');
+      if(mapEl) mapEl.outerHTML = '<div class="emptynote">Kartenbibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden.</div>';
+      return;
+    }
+    if(STATE.map){ STATE.map.remove(); STATE.map=null; }
+    const map = L.map('siteMap',{scrollWheelZoom:false}).setView([51.1657,10.4515], 6);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:18}).addTo(map);
+    sites.forEach(s=>{
+      const color = s.status==='Aktiv'?'#33D690': s.status==='Im Bau'?'#5B8DEF': s.status==='Optimierung'?'#F0A93E':'#5C6579';
+      L.circleMarker([s.lat,s.lng],{radius:7,color, fillColor:color, fillOpacity:.75, weight:1.5})
+        .addTo(map)
+        .bindPopup(`<b>${s.name}</b><br>${s.technology} · ${s.band}<br>Status: ${s.status}<br>Zellen: ${s.cellCount}`);
+    });
+    STATE.map = map;
+  }, 60);
+
+  const cols=[
+    {key:'id',label:'Standort-ID'},{key:'name',label:'Standortname'},{key:'city',label:'Stadt'},{key:'state',label:'Bundesland'},
+    {key:'technology',label:'Technologie'},{key:'status',label:'Status',fmt:v=>statusBadge(v)},
+    {key:'cellCount',label:'Anzahl Zellen'},{key:'commissionDate',label:'Inbetriebnahmedatum',fmt:fmtDate},
+  ];
+  const t = renderTable({id:'sites', columns:cols, rows:sites, pageSize:10, searchable:true, searchKeys:['name','city'], exportName:'Standorte'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.11 Glasfaser ---- */
+function viewFiber(){
+  const root = document.getElementById('viewRoot');
+  const ids = relatedIds();
+  const rows = STATE.data.fiber.filter(f=>ids.has(f.projectId));
+  const planned = rows.reduce((s,r)=>s+r.plannedConnections,0);
+  const realized = rows.reduce((s,r)=>s+r.realizedConnections,0);
+  const avgActivation = rows.length? rows.reduce((s,r)=>s+r.activationRate,0)/rows.length:0;
+
+  root.innerHTML = `
+    ${headBlock('Glasfaser','Fortschritt und Aktivierungsquote der FTTH-/Glasfaserausbauprojekte.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('cable','Geplante Anschlüsse', fmtNum(planned))}
+      ${kpiCard('plug-zap','Realisierte Anschlüsse', fmtNum(realized),'up')}
+      ${kpiCard('gauge','Ø Aktivierungsrate', fmtPct(avgActivation))}
+      ${kpiCard('route','Glasfaserstrecke gesamt (km)', fmtNum(rows.reduce((s,r)=>s+r.fiberLength,0)))}
+    </div>
+    <div class="panel"><div class="panel-title">Realisierte vs. geplante Anschlüsse je Projekt</div><div class="chart-wrap"><canvas id="chFiber"></canvas></div></div>
+    <div class="panel" id="tablePanel"></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+  const top = [...rows].sort((a,b)=>b.plannedConnections-a.plannedConnections).slice(0,10);
+  mkChart(document.getElementById('chFiber').getContext('2d'),{
+    type:'bar',
+    data:{labels:top.map(r=>r.city), datasets:[
+      {label:'Geplant', data:top.map(r=>r.plannedConnections), backgroundColor:'#5B8DEF', borderRadius:4},
+      {label:'Realisiert', data:top.map(r=>r.realizedConnections), backgroundColor:'#17D9B4', borderRadius:4}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{labels:{font:{size:11}}}}, scales:{x:{grid:{display:false}},y:{grid:{color:'#1B2230'}}}}
+  });
+  const cols=[
+    {key:'project',label:'Projekt'},{key:'region',label:'Region'},{key:'city',label:'Stadt'},
+    {key:'plannedConnections',label:'Geplante Anschlüsse'},{key:'realizedConnections',label:'Realisierte Anschlüsse'},
+    {key:'progress',label:'Fortschritt',fmt:progressCell}, {key:'fiberLength',label:'Glasfaserstrecke (km)'},
+    {key:'activationRate',label:'Aktivierungsrate',fmt:v=>v.toFixed(1)+' %'},
+  ];
+  const t = renderTable({id:'fiber', columns:cols, rows, pageSize:10, searchable:true, searchKeys:['project','city'], exportName:'Glasfaser'});
+  document.getElementById('tablePanel').innerHTML=t.html; t.wireUp(document.getElementById('tablePanel'));
+}
+
+/* ---- 10.12 Analysen ---- */
+function viewAnalytics(){
+  const root = document.getElementById('viewRoot');
+  const rows = filteredProjects();
+  const ids = new Set(rows.map(p=>p.id));
+  const tasks = STATE.data.tasks.filter(t=>ids.has(t.projectId));
+  const completionRate = tasks.length? (tasks.filter(t=>t.status==='Abgeschlossen').length/tasks.length)*100:0;
+  const overdueRate = tasks.length? (tasks.filter(t=>t.status==='Überfällig').length/tasks.length)*100:0;
+  const budgetConsumption = rows.reduce((s,p)=>s+p.budget,0) ? (rows.reduce((s,p)=>s+p.actualCost,0)/rows.reduce((s,p)=>s+p.budget,0))*100 : 0;
+
+  root.innerHTML = `
+    ${headBlock('Analysen','Portfolioweite Kennzahlenanalyse über Termine, Budget, Risiko und Netzqualität.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="kpi-grid">
+      ${kpiCard('check-square','Aufgabenabschlussquote', fmtPct(completionRate),'up')}
+      ${kpiCard('clock-alert','Überfälligkeitsquote', fmtPct(overdueRate), overdueRate>15?'down':'')}
+      ${kpiCard('gauge','Budgetverbrauch', fmtPct(budgetConsumption))}
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-title">Projektfortschritt nach Region</div><div class="chart-wrap"><canvas id="chRegion"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Risikoverteilung im Portfolio</div><div class="chart-wrap"><canvas id="chRiskDist"></canvas></div></div>
+    </div>
+    <div class="panel"><div class="panel-title">Budget- und Terminabweichung je Projektart</div><div class="chart-wrap"><canvas id="chDeviation"></canvas></div></div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+
+  const byRegion={}; rows.forEach(p=>{ byRegion[p.region]=byRegion[p.region]||[]; byRegion[p.region].push(p.progress); });
+  mkChart(document.getElementById('chRegion').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(byRegion), datasets:[{data:Object.keys(byRegion).map(r=>Math.round(byRegion[r].reduce((a,b)=>a+b,0)/byRegion[r].length)), backgroundColor:PALETTE[2], borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{max:100,grid:{color:'#1B2230'}},x:{grid:{display:false}}}}
+  });
+  const byRisk={}; rows.forEach(p=>{byRisk[p.riskLevel]=(byRisk[p.riskLevel]||0)+1;});
+  mkChart(document.getElementById('chRiskDist').getContext('2d'),{
+    type:'polarArea',
+    data:{labels:Object.keys(byRisk), datasets:[{data:Object.values(byRisk), backgroundColor:['rgba(51,214,144,.55)','rgba(79,182,224,.55)','rgba(240,169,62,.55)','rgba(239,90,111,.55)']}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{boxWidth:9,font:{size:10}}}}}
+  });
+  const byType={}; rows.forEach(p=>{ byType[p.type]=byType[p.type]||{b:0,a:0}; byType[p.type].b+=p.budget; byType[p.type].a+=p.actualCost; });
+  const typeLabels=Object.keys(byType);
+  mkChart(document.getElementById('chDeviation').getContext('2d'),{
+    type:'bar',
+    data:{labels:typeLabels, datasets:[{label:'Abweichung (%)', data:typeLabels.map(t=>(((byType[t].a-byType[t].b)/byType[t].b)*100).toFixed(1)), backgroundColor:typeLabels.map(t=>((byType[t].a-byType[t].b)/byType[t].b)*100>5?'#EF5A6F':'#33D690'), borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{font:{size:9.5}}},y:{grid:{color:'#1B2230'}}}}
+  });
+}
+
+/* ---- 10.13 Management-Erkenntnisse ---- */
+function viewInsights(){
+  const root = document.getElementById('viewRoot');
+  const rows = filteredProjects();
+  const ids = new Set(rows.map(p=>p.id));
+  const insights = [];
+
+  const delayed = rows.filter(p=>p.status==='Verzögert').length;
+  if(delayed>0) insights.push({type:'crit', text:`${delayed} Projekte weisen Terminabweichungen auf und erfordern unmittelbare Steuerungsmaßnahmen.`});
+
+  const totalBudget = rows.reduce((s,p)=>s+p.budget,0), actual = rows.reduce((s,p)=>s+p.actualCost,0);
+  const consumption = totalBudget? (actual/totalBudget)*100:0;
+  insights.push({type: consumption>90?'warn':'pos', text:`Das Gesamtportfolio weist einen Budgetverbrauch von ${consumption.toFixed(1)} % auf.`});
+
+  const critRisks = STATE.data.risks.filter(r=>ids.has(r.projectId)&&r.level==='Kritisch').length;
+  if(critRisks>0) insights.push({type:'crit', text:`${critRisks} Projekte befinden sich in einer kritischen Risikoklasse und sollten priorisiert überwacht werden.`});
+
+  const avgUtil = STATE.data.resources.length? STATE.data.resources.reduce((s,r)=>s+r.utilization,0)/STATE.data.resources.length:0;
+  insights.push({type: avgUtil>105?'warn':'pos', text:`Die durchschnittliche Ressourcenauslastung beträgt ${avgUtil.toFixed(1)} %.`});
+
+  const overdueTasks = STATE.data.tasks.filter(t=>ids.has(t.projectId)&&t.status==='Überfällig').length;
+  const totalTasks = STATE.data.tasks.filter(t=>ids.has(t.projectId)).length;
+  const overdueRate = totalTasks? (overdueTasks/totalTasks)*100:0;
+  insights.push({type: overdueRate>15?'warn':'pos', text:`${overdueTasks} von ${totalTasks} Aufgaben sind überfällig (${overdueRate.toFixed(1)} %).`});
+
+  const avgProgress = rows.length? rows.reduce((s,p)=>s+p.progress,0)/rows.length:0;
+  insights.push({type:'pos', text:`Das Portfolio erreicht einen durchschnittlichen Projektfortschritt von ${avgProgress.toFixed(1)} %.`});
+
+  const critMs = STATE.data.milestones.filter(m=>ids.has(m.projectId)&&m.status==='Verzögert').length;
+  if(critMs>0) insights.push({type:'warn', text:`${critMs} Meilensteine gelten als gefährdet und benötigen eine Terminüberprüfung.`});
+
+  root.innerHTML = `
+    ${headBlock('Management-Erkenntnisse','Automatisch generierte Erkenntnisse auf Basis der aktuellen Portfoliodaten.')}
+    <div class="filterbar" id="globalFilterBar"></div>
+    <div class="panel">
+      <div class="panel-title">Erkenntnisse<span class="tag">${insights.length} Hinweise</span></div>
+      ${insights.map(i=>`<div class="insight ${i.type}">${icon(i.type==='crit'?'alert-octagon':i.type==='warn'?'alert-triangle':'trending-up')}<p>${i.text}</p></div>`).join('')}
+    </div>
+  `;
+  renderGlobalFilterBar(document.getElementById('globalFilterBar'));
+}
+
+/* ---- 10.14 Berichte ---- */
+function viewReports(){
+  const root = document.getElementById('viewRoot');
+  const rows = filteredProjects();
+  const totalBudget = rows.reduce((s,p)=>s+p.budget,0), actual = rows.reduce((s,p)=>s+p.actualCost,0);
+  const avgProgress = rows.length? rows.reduce((s,p)=>s+p.progress,0)/rows.length:0;
+  root.innerHTML = `
+    ${headBlock('Berichte','Managementbericht über Projektstatus, Budget, Risiken und technische Kennzahlen.')}
+    <div class="no-print" style="display:flex;gap:10px;margin-bottom:18px;">
+      <button class="btn btn-primary" id="btnPrint">${icon('printer')}Drucken / Als PDF speichern</button>
+      <button class="btn" id="btnExportExcel">${icon('file-spreadsheet')}Als Excel exportieren</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Managementbericht — Projektportfolio</div>
+      <p style="color:var(--text-faint);font-size:12px;margin-bottom:16px;">Erstellt am ${fmtDate(new Date())} · ${fmtNum(rows.length)} Projekte im Berichtsumfang</p>
+      <div class="kpi-grid">
+        ${kpiCard('briefcase','Projekte gesamt', fmtNum(rows.length))}
+        ${kpiCard('trending-up','Ø Fortschritt', fmtPct(avgProgress))}
+        ${kpiCard('euro','Gesamtbudget', fmtEUR(totalBudget))}
+        ${kpiCard('wallet','Ist-Kosten', fmtEUR(actual))}
+      </div>
+      <div class="panel-title" style="margin-top:10px;">Projektstatus im Überblick</div>
+      <div class="table-wrap"><table><thead><tr><th>Projekt</th><th>Status</th><th>Fortschritt</th><th>Budget</th><th>Risiko</th></tr></thead>
+      <tbody>${rows.slice(0,20).map(p=>`<tr><td>${p.name}</td><td>${statusBadge(p.status)}</td><td>${progressCell(p.progress)}</td><td>${fmtEUR(p.budget)}</td><td>${riskBadge(p.riskLevel)}</td></tr>`).join('')}</tbody></table></div>
+    </div>
+  `;
+  document.getElementById('btnPrint').addEventListener('click',()=>window.print());
+  document.getElementById('btnExportExcel').addEventListener('click',()=>exportRows(rows,'Managementbericht'));
+}
+
+/* ---- 10.15 Datenqualität ---- */
+function viewQuality(){
+  const root = document.getElementById('viewRoot');
+  const q = STATE.quality || {};
+  root.innerHTML = `
+    ${headBlock('Datenqualität','Bewertung der Vollständigkeit, Konsistenz und Zuverlässigkeit der importierten Daten.')}
+    <div class="kpi-grid">
+      ${kpiCard('shield-check','Datenqualitätsindex', q.qualityIndex? q.qualityIndex.toFixed(1)+' %':'–', q.qualityIndex>95?'up':'warn')}
+      ${kpiCard('database','Datensätze gesamt', fmtNum(q.recordCount||0))}
+      ${kpiCard('columns','Spalten gesamt', fmtNum(q.colCount||0))}
+      ${kpiCard('alert-circle','Fehlende Werte', fmtNum(q.missing||0))}
+      ${kpiCard('copy','Duplikate', fmtNum(q.dupIds||0))}
+    </div>
+    <div class="panel">
+      <div class="panel-title">Bewertung nach Kategorie</div>
+      <div class="dq-row"><span class="dq-col">Vollständig</span><span class="badge ok">${fmtNum((q.recordCount||0)-(q.missing||0)-(q.invalidDates||0))} Datensätze ohne erkannte Probleme</span></div>
+      <div class="dq-row"><span class="dq-col">Warnung</span><span class="badge warn">${fmtNum(q.missing||0)} Datensätze mit fehlenden Werten</span></div>
+      <div class="dq-row"><span class="dq-col">Fehler</span><span class="badge crit">${fmtNum(q.invalidDates||0)} Datensätze mit ungültigen Datumswerten</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Problematische Spalten</div>
+      ${ (q.problemCols&&q.problemCols.length) ? q.problemCols.map(c=>`<div class="dq-row"><span class="dq-col">${c.col}</span><span>${c.issue}</span></div>`).join('') : `<div class="emptynote">Keine problematischen Spalten erkannt.</div>` }
+      <div class="dq-row"><span class="dq-col">Letzte Aktualisierung</span><span>${q.updated? q.updated.toLocaleString('de-DE'):'–'}</span></div>
+    </div>
+  `;
+}
+
+/* ---- 10.16 Einstellungen ---- */
+function viewSettings(){
+  const root = document.getElementById('viewRoot');
+  root.innerHTML = `
+    ${headBlock('Einstellungen','Anwendungs- und Datenschutzeinstellungen.')}
+    <div class="panel">
+      <div class="settings-row"><div><h4>Lokale Datenverarbeitung</h4><p>Alle importierten Daten werden ausschließlich lokal im Browser verarbeitet.</p></div><div class="toggle on"><i></i></div></div>
+      <div class="settings-row"><div><h4>Automatische Spaltenerkennung</h4><p>Erkennt abweichende Spaltenbezeichnungen beim Import automatisch.</p></div><div class="toggle on"><i></i></div></div>
+      <div class="settings-row"><div><h4>Kompakte Tabellenansicht</h4><p>Reduziert die Zeilenhöhe in Datentabellen.</p></div><div class="toggle" id="compactToggle"><i></i></div></div>
+      <div class="settings-row"><div><h4>Aktuelle Datenquelle</h4><p>${STATE.fileName||'Beispieldaten'}</p></div><button class="small-btn" id="settingsNewImport">${icon('refresh-cw')}Neuer Import</button></div>
+    </div>
+  `;
+  document.getElementById('settingsNewImport').addEventListener('click',()=>{
+    document.getElementById('app').classList.remove('active');
+    document.getElementById('landing').style.display='flex';
+  });
+  document.getElementById('compactToggle').addEventListener('click',function(){ this.classList.toggle('on'); });
+}
+
+/* Initial icon render for the landing screen. Runs once the DOM for this
+   script's own markup exists (it always does, since this script tag sits
+   at the end of <body>) and is safe even if lucide never finished loading,
+   because refreshIcons() checks for it first. */
+refreshIcons();
+document.addEventListener('DOMContentLoaded', refreshIcons);
+</script>
+</body>
+</html>
